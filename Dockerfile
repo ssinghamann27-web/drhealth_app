@@ -41,3 +41,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
 
 # ✅ Start FastAPI server
 CMD ["uvicorn", "server_fastapi:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Render rebuild trigger
