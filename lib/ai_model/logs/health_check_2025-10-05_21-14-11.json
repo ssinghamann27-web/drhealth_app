@@ -1,0 +1,1 @@
+﻿{"ok":true,"class_names":["NORMAL","PNEUMONIA"],"img_size":[180,180],"onnx_model":"C:\\Users\\ssing\\drhealth_app\\lib\\ai_model\\pneumonia_model.onnx","use_llm":true,"layout":"NHWC"}

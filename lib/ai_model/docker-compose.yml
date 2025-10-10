@@ -1,0 +1,133 @@
+version: "3.9"
+
+services:
+  # 🧠 FASTAPI (DrHealth AI)
+  drhealth_fastapi:
+    container_name: drhealth_fastapi
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./api_data:/app/api_data
+      - ./drhealth.db:/app/drhealth.db
+    depends_on:
+      loki:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      grafana:
+        condition: service_started
+    networks:
+      - drhealth_network
+    restart: always
+
+  # 📈 PROMETHEUS
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    networks:
+      - drhealth_network
+    restart: always
+
+  # 📊 GRAFANA
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+      - loki
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - drhealth_network
+    restart: always
+
+  # 🪵 LOKI (Logs)
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki-config.yml:/etc/loki/loki-config.yml
+      - ./loki_data:/loki
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - drhealth_network
+    restart: always
+
+  # 🧾 PROMTAIL
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: promtail
+    volumes:
+      - ./logs:/var/log/app
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:9080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - drhealth_network
+    restart: on-failure
+
+  # ⚙️ CADVISOR (Container Resource Metrics)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - drhealth_network
+    restart: always
+
+  # 💾 BACKUP SERVICE (Optional - daily DB backup)
+  backup:
+    image: amazon/aws-cli
+    container_name: drhealth_backup
+    volumes:
+      - ./api_data:/app/api_data
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    entrypoint: ["/bin/sh", "-c", "chmod +x /app/backup.sh && /app/backup.sh"]
+    restart: on-failure
+
+networks:
+  drhealth_network:
+
+volumes:
+  grafana-storage:

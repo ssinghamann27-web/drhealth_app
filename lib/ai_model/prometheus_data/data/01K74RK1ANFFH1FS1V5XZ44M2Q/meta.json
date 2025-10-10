@@ -1,0 +1,18 @@
+{
+	"ulid": "01K74RK1ANFFH1FS1V5XZ44M2Q",
+	"minTime": 1760011200000,
+	"maxTime": 1760018400000,
+	"stats": {
+		"numSamples": 974205,
+		"numFloatSamples": 974205,
+		"numSeries": 3069,
+		"numChunks": 8257
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01K74RK1ANFFH1FS1V5XZ44M2Q"
+		]
+	},
+	"version": 1
+}

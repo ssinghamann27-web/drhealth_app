@@ -1,0 +1,2 @@
+2025-10-08 13:57:44,643 | INFO | ✅ ONNX model loaded.
+2025-10-08 18:00:06,828 INFO drhealth: ONNX model loaded from C:\Users\ssing\drhealth_app\lib\ai_model\pneumonia_model.onnx

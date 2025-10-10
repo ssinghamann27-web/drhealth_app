@@ -1,0 +1,14 @@
+PS C:\Users\ssing> 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
+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 : The term 
+'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' is not recognized as the name of a 
+cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, 
+verify that the path is correct and try again.
+At line:1 char:1
++ sk-or-v1-ece7a1657153f20b86a15a418cd8d7c0e94359393307d16a2a373d642ceb ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (sk-or-v1-ece7a1...a373d642ceb32a4:String) [], CommandNotFoundExcept 
+   ion
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+
+PS C:\Users\ssing> 

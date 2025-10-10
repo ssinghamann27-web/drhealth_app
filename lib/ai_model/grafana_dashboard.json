@@ -1,0 +1,194 @@
+{
+  "id": null,
+  "title": "DrHealth FastAPI + LLM Monitoring Dashboard",
+  "tags": ["fastapi", "prometheus", "loki", "drhealth", "llm", "monitoring"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 3,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "✅ Requests / Sec",
+      "targets": [
+        {
+          "expr": "rate(api_requests_total[1m])",
+          "legendFormat": "RPS",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 }
+    },
+    {
+      "type": "timeseries",
+      "title": "⚡ Response Latency (ms)",
+      "targets": [
+        {
+          "expr": "(rate(api_request_latency_seconds_sum[1m]) / rate(api_request_latency_seconds_count[1m])) * 1000",
+          "legendFormat": "Latency (ms)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 6, "y": 0, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "lines", "fillOpacity": 30, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "❌ Error Rate (%)",
+      "targets": [
+        {
+          "expr": "(sum(rate(api_requests_total{status!~\"2..\"}[1m])) / sum(rate(api_requests_total[1m]))) * 100",
+          "legendFormat": "Error %",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 4, "w": 6, "h": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "type": "row",
+      "title": "🧠 LLM Analytics",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "💬 LLM Token Usage (Tokens/sec)",
+      "targets": [
+        {
+          "expr": "rate(llm_tokens_total[1m])",
+          "legendFormat": "Tokens/sec",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 9, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "lines", "fillOpacity": 40, "showPoints": "never" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "📨 LLM Requests / Sec (API Load)",
+      "targets": [
+        {
+          "expr": "rate(llm_requests_total[1m])",
+          "legendFormat": "Requests/sec",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 9, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "continuous-GrYlRd" },
+          "custom": { "lineInterpolation": "smooth" }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "⏱️ LLM Response Time (ms)",
+      "targets": [
+        {
+          "expr": "(rate(llm_response_latency_seconds_sum[1m]) / rate(llm_response_latency_seconds_count[1m])) * 1000",
+          "legendFormat": "Latency (ms)",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 15, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "lines", "fillOpacity": 25, "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "💸 Estimated Token Cost (USD/min)",
+      "targets": [
+        {
+          "expr": "rate(llm_tokens_total[1m]) * 0.000002",
+          "legendFormat": "Cost USD/min",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 15, "w": 12, "h": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "continuous-GrYlRd" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "💻 CPU Usage (%)",
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{id!=\"/\",id!=\"/docker\"}[1m]) * 100",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 21, "w": 12, "h": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "🧠 Memory Usage (MB)",
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{id!=\"/\",id!=\"/docker\"} / 1024 / 1024",
+          "legendFormat": "{{container}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 21, "w": 12, "h": 6 }
+    },
+    {
+      "type": "logs",
+      "title": "📜 Application Logs (via Loki)",
+      "targets": [
+        {
+          "expr": "{job=\"drhealth_fastapi\"}",
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" }
+        }
+      ],
+      "gridPos": { "x": 0, "y": 27, "w": 24, "h": 8 }
+    }
+  ],
+  "templating": {
+    "list": [
+      { "type": "datasource", "name": "Prometheus", "query": "prometheus" },
+      { "type": "datasource", "name": "Loki", "query": "loki" }
+    ]
+  }
+}

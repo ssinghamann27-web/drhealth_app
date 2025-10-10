@@ -1,0 +1,9 @@
+﻿lib/ai_model/venv/
+lib/ai_model/.venv/
+lib/ai_model/__pycache__/
+lib/ai_model/frontend_build/
+*.db
+*.onnx
+*.keras
+*.jpg
+*.png

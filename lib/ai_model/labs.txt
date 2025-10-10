@@ -1,0 +1,10 @@
+Patient Name: John Doe
+Age: 32
+
+Hemoglobin: 11.2 g/dL
+WBC: 13.5 x10^9/L
+Platelets: 410 x10^9/L
+Glucose: 108 mg/dL
+Creatinine: 1.1 mg/dL
+Sodium: 140 mmol/L
+Potassium: 3.2 mmol/L
