@@ -1,0 +1,55 @@
+{
+  "title": "DELUSION IS DEATH",
+  "subtitle": "A STORY OF EGO & ILLUSION",
+  "production": "AMAN PRODUCTION",
+  "chapter_number": "ADHYAY 1",
+  "chapter_name": "MULAQAAT",
+  "chapter_gloss": "THE MEETING",
+  "chapter": "ADHYAY 1  ·  MULAQAAT",
+  "shayari_credit": "SAQI AMROHVI",
+  "_comment": "The intro has ~40s of recited shayari with nothing on screen. Type the lines into the slots below and re-run build.sh - they render in the same style as the verse captions. 'accent' words draw in red. Empty slots simply do not draw.",
+  "shayari": [
+    {
+      "t": 12.45,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 18.41,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 24.37,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 30.33,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 36.3,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 42.26,
+      "hold": 5.3,
+      "lines": [],
+      "accent": []
+    },
+    {
+      "t": 48.22,
+      "hold": 3.8,
+      "lines": [],
+      "accent": []
+    }
+  ]
+}

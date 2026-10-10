@@ -1,0 +1,6 @@
+# rendered output
+*.mp4
+*.mov
+*.png
+*.jpg
+__pycache__/
