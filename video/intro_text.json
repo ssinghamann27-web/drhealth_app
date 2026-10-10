@@ -3,11 +3,11 @@
   "subtitle": "A STORY OF EGO & ILLUSION",
   "production": "AMAN PRODUCTION",
   "chapter_number": "ADHYAY 1",
-  "chapter_name": "MULAQAAT",
-  "chapter_gloss": "THE MEETING",
-  "chapter": "ADHYAY 1  ·  MULAQAAT",
+  "chapter_name": "SHAYARI",
+  "chapter_gloss": "THE VERSE BEFORE THE STORM",
+  "chapter": "ADHYAY 1  ·  SHAYARI",
   "shayari_credit": "SAQI AMROHVI",
-  "_comment": "The intro has ~40s of recited shayari with nothing on screen. Type the lines into the slots below and re-run build.sh - they render in the same style as the verse captions. 'accent' words draw in red. Empty slots simply do not draw.",
+  "_comment": "These ~40s of recited shayari currently play with nothing on screen. Type the lines into the slots below and re-run build.sh - they render in italic serif, a deliberately different voice from the verse captions later. 'accent' words draw in red. Empty slots simply do not draw.",
   "shayari": [
     {
       "t": 12.45,
@@ -51,5 +51,6 @@
       "lines": [],
       "accent": []
     }
-  ]
+  ],
+  "credit_label": "WORDS BY"
 }

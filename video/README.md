@@ -34,7 +34,7 @@ landing on a downbeat:
 |------|------|-------------|
 | 0.00 | Brand — mark strikes in, rule sweeps out under it | 0.52 |
 | 6.48 | Title lands *on a landscape*, not on black | 6.48 |
-| 12.45 | The road — poles, wires, rain, a crow leaving on the lightning | 15.43 |
+| 12.45 | **ADHYAY 1 · SHAYARI** chapter plate, then the road | 15.43 |
 | 18.41 | The town — windows lit, then going dark one by one as he passes | 21.39 |
 | 24.37 | The crowd — heads turn to track him, then snap to camera, eyes open | 27.35 |
 | 30.33 | The mask — fractures a step per beat, shatters, the eye burns through | 33.32 |
@@ -51,6 +51,35 @@ bursts, the crowd fades up rank by rank.
 telephone poles with sagging wires, a dead tree, fences, a mailbox, a house
 with roof and chimney, a crow, drifting branches, puppet strings, dust inside
 the light cone. Rain carries wind, embers rise, the glow breathes on the bar.
+
+## Production pass
+
+Three things carry the look:
+
+**Depth.** Four planes — a fog-lifted far horizon (ridges, pylons, a second
+skyline), a mid set, the action plane, and a defocused foreground confined to
+the frame edges by a gradient mask so it reads as depth of field rather than a
+smear.
+
+**Light that behaves.** Wet-ground reflection with ripple and falloff, bloom,
+halation, volumetric shafts from every practical source, soft backlight pools
+that separate ranks of silhouettes, chromatic aberration, gate weave, and a
+final S-curve grade.
+
+**Density.** Transmission pylons, lamp posts with spill, a water tower,
+antennae, laundry lines, chimney smoke, puddles, rain splashes on the ground,
+grass, debris, bird flocks, blowing leaves, umbrellas in the crowd.
+
+## Type system
+
+Four roles with real contrast between them:
+
+| Role | Face | Used for |
+|------|------|----------|
+| Title | Big Shoulders Bold | `DELUSION IS DEATH` — keeps the established brand |
+| Chapter | Gloock | `SHAYARI` — high-contrast editorial serif |
+| Verse | Instrument Serif Italic | the recited shayari, a different voice from the rap captions |
+| Label | Jura | tracked micro-labels, eyebrows, credits |
 
 ## The one thing still missing
 

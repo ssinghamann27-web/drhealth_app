@@ -15,8 +15,18 @@ FPS = 30
 SS = 2  # supersample factor for vector layers
 
 FONT_DIR = "/mnt/skills/examples/canvas-design/canvas-fonts"
-DISPLAY = os.path.join(FONT_DIR, "BigShoulders-Bold.ttf")
+# --- type system ---------------------------------------------------------
+# Four roles with real contrast between them: a condensed grotesque for the
+# title (keeps the established brand), a high-contrast editorial serif for
+# chapter furniture, an italic serif for the recited poetry, and a light
+# geometric for tracked micro-labels.
+DISPLAY = os.path.join(FONT_DIR, "BigShoulders-Bold.ttf")       # title
 DISPLAY_LIGHT = os.path.join(FONT_DIR, "BigShoulders-Regular.ttf")
+EDITORIAL = os.path.join(FONT_DIR, "Gloock-Regular.ttf")        # chapter name
+VERSE = os.path.join(FONT_DIR, "InstrumentSerif-Italic.ttf")    # shayari
+VERSE_UP = os.path.join(FONT_DIR, "InstrumentSerif-Regular.ttf")
+LABEL = os.path.join(FONT_DIR, "Jura-Light.ttf")                # micro-labels
+LABEL_MED = os.path.join(FONT_DIR, "Jura-Medium.ttf")
 MONO = os.path.join(FONT_DIR, "DMMono-Regular.ttf")
 
 # --- palette -------------------------------------------------------------

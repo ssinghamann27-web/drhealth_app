@@ -366,12 +366,17 @@ def threads(d, xs, y_top, y_bot, t, snapped=0.0, fill=255, seed=11,
             k = clamp((snapped - cut) * 3.0)
             ytip = lerp(y_bot, y_top + (y_bot - y_top) * 0.35, smoothstep(k))
             drop = smoothstep(k) * 120
-            pts = [(x + math.sin(t * 1.1 + i) * 4, y_top),
-                   (x + math.sin(t * 1.3 + i) * 10, lerp(y_top, ytip, 0.5)),
+            rig = W * 0.5 + (x - W * 0.5) * 0.28
+            pts = [(rig + math.sin(t * 1.1 + i) * 4, y_top),
+                   (lerp(rig, x, 0.58) + math.sin(t * 1.3 + i) * 10,
+                    lerp(y_top, ytip, 0.5)),
                    (x + math.sin(t * 1.7 + i) * 26 + drop * 0.25, ytip + drop * 0.2)]
         else:
-            pts = [(x + math.sin(t * 1.1 + i) * 3, y_top),
-                   (x + math.sin(t * 1.3 + i * 0.7) * 9, (y_top + y_bot) / 2),
+            # converge toward a rig point above frame: a fan, not a barricade
+            rig = W * 0.5 + (x - W * 0.5) * 0.28
+            pts = [(rig + math.sin(t * 1.1 + i) * 3, y_top),
+                   (lerp(rig, x, 0.58) + math.sin(t * 1.3 + i * 0.7) * 9,
+                    (y_top + y_bot) / 2),
                    (x + math.sin(t * 1.6 + i * 1.3) * 5, y_bot)]
         d.line(pts, fill=fill, width=2, joint="curve")
 
@@ -415,3 +420,204 @@ def dust(d, cx, half, y0, y1, t, n=70, seed=4, fill=255):
         xx = cx + math.sin(t * 0.5 + ph) * half * k * rng.uniform(0.2, 0.95)
         r = rng.uniform(0.9, 2.4)
         d.ellipse([xx - r, yy - r, xx + r, yy + r], fill=int(fill * rng.uniform(0.3, 1.0)))
+
+
+# --- density pass --------------------------------------------------------
+# Everything below exists to fill the frame. The first cut of this intro read
+# as empty because each shot carried one idea and nothing around it; these are
+# the things that live at the edges of a real exterior.
+
+def grass(d, x0, x1, base_y, h, fill=255, seed=0, n=90, wind=0.0, t=0.0):
+    """Tufts along the ground. Cheap, and it stops the floor reading as a void."""
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        x = r.uniform(x0, x1)
+        hh = h * r.uniform(0.45, 1.0)
+        lean = math.sin(t * 1.3 + x * 0.01) * wind * hh * 0.28
+        for k in range(r.integers(2, 5)):
+            sp = r.uniform(-1, 1) * hh * 0.3
+            d.line([(x, base_y), (x + sp + lean, base_y - hh * r.uniform(0.7, 1.0))],
+                   fill=fill, width=max(1, int(hh * 0.07)))
+
+
+def debris(d, x0, x1, base_y, fill=255, seed=0, n=26, scale=1.0):
+    """Stones and junk scattered on the ground plane."""
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        x = r.uniform(x0, x1)
+        y = base_y + r.uniform(-6, 26)
+        w = r.uniform(3, 13) * scale
+        h = w * r.uniform(0.3, 0.7)
+        d.ellipse([x - w, y - h, x + w, y + h], fill=fill)
+
+
+def puddle(d, cx, cy, w, h, fill=255):
+    d.ellipse([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], fill=fill)
+
+
+def street_lamp(d, x, base_y, h, fill=255, lw=None, arm=0.14, bend=1):
+    """Lamp post with a curved head. Returns the lamp position for the light pass."""
+    lw = lw or max(2, int(h * 0.028))
+    d.line([(x, base_y), (x, base_y - h)], fill=fill, width=lw)
+    hx = x + bend * h * arm
+    pts = [(x, base_y - h),
+           (x + bend * h * arm * 0.55, base_y - h - h * 0.055),
+           (hx, base_y - h - h * 0.035)]
+    d.line(pts, fill=fill, width=lw, joint="curve")
+    d.ellipse([hx - h * 0.030, base_y - h - h * 0.030,
+               hx + h * 0.030, base_y - h + h * 0.012], fill=fill)
+    return (hx, base_y - h - h * 0.012)
+
+
+def pylon(d, x, base_y, h, fill=255, lw=3):
+    """Lattice transmission tower - reads as distance and industry."""
+    hw = h * 0.20
+    tw = h * 0.055
+    d.line([(x - hw, base_y), (x - tw, base_y - h)], fill=fill, width=lw)
+    d.line([(x + hw, base_y), (x + tw, base_y - h)], fill=fill, width=lw)
+    steps = 9
+    for i in range(steps + 1):
+        u = i / steps
+        y = base_y - h * u
+        w = lerp(hw, tw, u)
+        d.line([(x - w, y), (x + w, y)], fill=fill, width=max(1, lw - 1))
+        if i < steps:
+            u2 = (i + 1) / steps
+            y2 = base_y - h * u2
+            w2 = lerp(hw, tw, u2)
+            d.line([(x - w, y), (x + w2, y2)], fill=fill, width=max(1, lw - 2))
+            d.line([(x + w, y), (x - w2, y2)], fill=fill, width=max(1, lw - 2))
+    for i, (ay, aw) in enumerate([(0.78, 0.30), (0.90, 0.24)]):
+        y = base_y - h * ay
+        d.line([(x - h * aw, y), (x + h * aw, y)], fill=fill, width=lw)
+        for s in (-1, 1):
+            d.line([(x + s * h * aw, y), (x + s * h * aw, y - h * 0.035)],
+                   fill=fill, width=max(1, lw - 1))
+
+
+def water_tower(d, x, base_y, h, fill=255, lw=3):
+    tw = h * 0.30
+    ty = base_y - h
+    d.polygon([(x - tw, ty + h * 0.22), (x + tw, ty + h * 0.22),
+               (x + tw * 0.82, ty), (x - tw * 0.82, ty)], fill=fill)
+    d.polygon([(x - tw * 0.82, ty), (x + tw * 0.82, ty), (x, ty - h * 0.12)],
+              fill=fill)
+    for s in (-1, 1, 0):
+        d.line([(x + s * tw * 0.72, ty + h * 0.22),
+                (x + s * tw * 0.34, base_y)], fill=fill, width=lw)
+
+
+def antenna(d, x, base_y, h, fill=255, lw=2, seed=0):
+    r = np.random.default_rng(seed)
+    d.line([(x, base_y), (x, base_y - h)], fill=fill, width=lw)
+    for i in range(int(r.integers(2, 5))):
+        y = base_y - h * r.uniform(0.35, 0.95)
+        w = h * r.uniform(0.10, 0.26)
+        d.line([(x - w, y), (x + w, y)], fill=fill, width=max(1, lw - 1))
+
+
+def laundry_line(d, x0, y0, x1, y1, fill=255, seed=0, n=5):
+    r = np.random.default_rng(seed)
+    sag = abs(x1 - x0) * 0.07
+    pts = [(lerp(x0, x1, i / 16), lerp(y0, y1, i / 16) + math.sin(i / 16 * math.pi) * sag)
+           for i in range(17)]
+    d.line(pts, fill=fill, width=2, joint="curve")
+    for i in range(n):
+        u = (i + 0.6) / (n + 0.2)
+        x = lerp(x0, x1, u)
+        y = lerp(y0, y1, u) + math.sin(u * math.pi) * sag
+        w = r.uniform(10, 22)
+        hh = r.uniform(20, 46)
+        d.polygon([(x - w, y), (x + w, y), (x + w * 0.8, y + hh),
+                   (x - w * 0.8, y + hh)], fill=fill)
+
+
+def smoke_column(d, x, y, h, t, fill=255, seed=0, width=26):
+    """A drifting column of smoke, drawn as overlapping soft blobs."""
+    r = np.random.default_rng(seed)
+    n = 16
+    for i in range(n):
+        u = (i / n + (t * 0.06) % 1.0) % 1.0
+        yy = y - u * h
+        ww = width * (0.35 + u * 1.9)
+        drift = math.sin(u * 3.0 + t * 0.6 + seed) * h * 0.14
+        a = int(fill * (1.0 - u) ** 1.2 * 0.85)
+        if a <= 3:
+            continue
+        d.ellipse([x + drift - ww, yy - ww * 0.7, x + drift + ww, yy + ww * 0.7],
+                  fill=a)
+
+
+def bird_flock(d, cx, cy, spread, t, fill=255, n=9, seed=0, drift=1.0):
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        ph = r.random() * 6.283
+        x = cx + r.uniform(-1, 1) * spread + t * 42 * drift
+        y = cy + r.uniform(-1, 1) * spread * 0.32 + math.sin(t * 1.1 + ph) * 12
+        s = r.uniform(7, 15)
+        crow(d, x, y, s, t * 9 + ph, fill=fill)
+
+
+def leaves(d, t, fill=255, n=26, seed=0, strength=1.0):
+    """Debris blowing through frame."""
+    if strength <= 0.02:
+        return
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        ph = r.random() * 6.283
+        sp = r.uniform(70, 230)
+        x = (r.random() * W * 1.4 + t * sp) % (W * 1.4) - W * 0.2
+        y = (r.random() * H + math.sin(t * 1.4 + ph) * 70 + t * sp * 0.22) % H
+        s = r.uniform(3, 8) * strength
+        d.polygon([(x, y - s), (x + s * 0.8, y), (x, y + s), (x - s * 0.8, y)],
+                  fill=fill)
+
+
+def fg_frame(d, t, fill=255, seed=0, side_only=False):
+    """Big near-camera silhouettes that frame the shot. Blurred on composite,
+    they read as depth of field and give the frame corners something to hold."""
+    r = np.random.default_rng(seed)
+    sway = math.sin(t * 0.55) * 14
+    for s in (-1, 1):
+        x0 = 0 if s < 0 else W
+        for i in range(3):
+            y = r.uniform(-0.1, 0.95) * H
+            ln = r.uniform(0.10, 0.19) * W
+
+            def limb(px, py, ang, L, w, lvl):
+                ex = px + math.cos(ang) * L * (1 if s < 0 else -1) + sway * 0.3
+                ey = py + math.sin(ang) * L
+                d.line([(px, py), (ex, ey)], fill=fill, width=max(2, int(w)))
+                if lvl >= 3:
+                    return
+                for k in range(2):
+                    limb(ex, ey, ang + r.uniform(0.3, 0.9) * (1 if k else -1),
+                         L * r.uniform(0.55, 0.72), w * 0.62, lvl + 1)
+
+            limb(x0 + sway * s, y, r.uniform(-0.40, 0.40), ln * 0.45, 30, 1)
+    if side_only:
+        return
+    for i in range(4):
+        x = r.uniform(0, W)
+        hh = r.uniform(0.08, 0.20) * H
+        grass(d, x - 60, x + 60, H + 14, hh, fill=fill, seed=seed * 31 + i,
+              n=14, wind=0.5, t=t)
+
+
+def splashes(d, x0, x1, base_y, t, fill=255, n=40, seed=0, strength=1.0):
+    """Rain hitting the ground. Small, but it ties the weather to the floor."""
+    if strength <= 0.02:
+        return
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        x = r.uniform(x0, x1)
+        ph = r.random()
+        k = ((t * 1.9 + ph) % 1.0)
+        if k > 0.45:
+            continue
+        rr = (2 + k * 17) * strength
+        y = base_y + r.uniform(-4, 30)
+        a = int(fill * (1.0 - k / 0.45) * 0.8)
+        if a <= 3:
+            continue
+        d.ellipse([x - rr, y - rr * 0.30, x + rr, y + rr * 0.30], outline=a, width=1)

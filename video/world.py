@@ -65,11 +65,11 @@ def background(t, glow_y=0.62, glow_x=0.5, intensity=1.0, pulse=0.0, cool=0.0):
 
     drift = 0.72 + 0.56 * np.roll(_LCLOUD, int((t * 2.25) % LW), axis=1)
 
-    amp = 96.0 * intensity * breathe
+    amp = 126.0 * intensity * breathe
     base = core * drift * amp
     horizon = np.clip((_lny - 0.74) / 0.26, 0, 1) ** 1.5
 
-    red = base + horizon * 16.0 * intensity
+    red = base + horizon * 26.0 * intensity
     grn = base * 0.17 + horizon * 2.4 * intensity
     blu = base * 0.19 + horizon * 3.0 * intensity
 
@@ -96,8 +96,8 @@ def _vignette_mask(strength):
     key = round(strength, 3)
     if key not in _vig_cache:
         r = _lradial(0.5, 0.52, 0.80, 0.78)
-        v = np.clip(1.0 - (r ** 2.4) * 0.92 * strength, 0.0, 1.0)
-        _vig_cache[key] = _upscale(v)[:, :, None] * (0.12 + 0.88 * _TOPFALL)
+        v = np.clip(1.0 - (r ** 2.4) * 0.74 * strength, 0.0, 1.0)
+        _vig_cache[key] = _upscale(v)[:, :, None] * (0.18 + 0.82 * _TOPFALL)
     return _vig_cache[key]
 
 

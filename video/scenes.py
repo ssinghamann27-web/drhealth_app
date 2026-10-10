@@ -1,24 +1,25 @@
 """The intro beat sheet.
 
-v8 spent 0-52s on four ideas: a logo, a title, a figure walking in the dark,
-and a spotlight. Forty of those seconds had no new information in them, which
-is why it played long. This rebuild puts a new idea on every second bar - nine
-scenes, each with its own payoff landing on a downbeat - and gives every prop
-an eased life so nothing snaps in or out.
+Nine scenes across 0 -> 52.53s, one new idea every two bars, each payoff
+landing on a downbeat. Tempo 80.5 BPM, bar 2.9814s, first downbeat 0.520s.
 
-Tempo: 80.5 BPM, bar = 2.9814s, first downbeat at 0.520s.
+Three things carry the production value: depth (a far set, a mid set, an
+action plane and a defocused foreground), light that behaves (reflection,
+bloom, halation, shafts) and a type system with real contrast in it.
 """
 import json
 import math
 import os
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
+import post
 import props
 import world
-from style import (BONE, DISPLAY, DISPLAY_LIGHT, H, MONO, RED, RED_HOT, W,
-                   clamp, ease_in, ease_out, ease_out_back, font, lerp, ramp,
+from style import (BONE, DISPLAY, DISPLAY_LIGHT, EDITORIAL, H, LABEL,
+                   LABEL_MED, MONO, RED, RED_HOT, VERSE, VERSE_UP, W, clamp,
+                   ease_in, ease_out, ease_out_back, font, lerp, ramp,
                    smootherstep, smoothstep, text_size, tracked, window)
 
 BAR = 2.9814
@@ -27,57 +28,65 @@ BEAT = BAR / 4.0
 
 
 def b(n):
-    """Time of downbeat n."""
     return PH + n * BAR
 
 
-# scene boundaries, all on downbeats
-S_BRAND, S_TITLE = 0.0, b(2)          # 6.483
-S_ROAD = b(4)                          # 12.446
-S_TOWN = b(6)                          # 18.408
-S_CROWD = b(8)                         # 24.371
-S_MASK = b(10)                         # 30.334
-S_HOUSE = b(12)                        # 36.297
-S_THREAD = b(14)                       # 42.260
-S_LIGHT = b(16)                        # 48.222
-S_END = 52.5333                        # v8's hard cut into the first verse
+S_BRAND, S_TITLE = 0.0, b(2)           # 6.483
+S_ROAD = b(4)                           # 12.446
+S_TOWN = b(6)                           # 18.408
+S_CROWD = b(8)                          # 24.371
+S_MASK = b(10)                          # 30.334
+S_HOUSE = b(12)                         # 36.297
+S_THREAD = b(14)                        # 42.260
+S_LIGHT = b(16)                         # 48.222
+S_END = 52.5333                         # v8's hard cut into the first verse
 
 GY = props.GROUND
 
-_rain = world.Rain()
-_embers = world.Embers()
+_rain = world.Rain(n=760)
+_embers = world.Embers(n=120)
 
 _here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_here, "intro_text.json")) as fh:
     TEXT = json.load(fh)
 
 
+def _edge_mask():
+    """1 at the frame edges, 0 across the middle - keeps the defocused
+    foreground acting as a vignette of branches rather than a smear."""
+    x = np.linspace(0, 1, W, dtype=np.float32)
+    ex = np.clip(1.0 - np.minimum(x, 1 - x) / 0.22, 0, 1) ** 1.3
+    y = np.linspace(0, 1, H, dtype=np.float32)
+    ey = np.clip(1.0 - np.minimum(y, 1 - y) / 0.16, 0, 1) ** 1.3
+    m = np.maximum(ex[None, :], ey[:, None])
+    return Image.fromarray((m * 255).astype(np.uint8), "L")
+
+
+_EDGE_MASK = _edge_mask()
+
+
 def pulse_at(t, t0, decay=0.22):
-    """A quick swell that decays - used to hit the frame on a downbeat."""
     if t < t0:
         return 0.0
     return math.exp(-(t - t0) / decay)
 
 
-def beat_pulse(t, t0, t1, decay=0.16, every=BEAT):
-    """Repeating pulse on the beat grid between t0 and t1."""
-    if t < t0 or t > t1:
-        return 0.0
-    k = math.floor((t - PH) / every)
-    return math.exp(-((t - PH) - k * every) / decay)
-
-
 class Frame:
-    """Mask set for one frame. Grouping by colour keeps composites down to ~4."""
+    """Mask set for one frame, grouped so the whole scene resolves in a few
+    composites regardless of how much is in it."""
 
     def __init__(self):
-        self.bg, self.d_bg = props.new_mask()        # distant set (translucent)
-        self.sil, self.d_sil = props.new_mask()      # near occluders (solid)
-        self.red, self.d_red = props.new_mask()      # red line work
-        self.lit, self.d_lit = props.new_mask()      # emissive (bone)
-        self.warm, self.d_warm = props.new_mask()    # emissive (amber)
+        self.far, self.d_far = props.new_mask()    # horizon, faded by fog
+        self.bg, self.d_bg = props.new_mask()      # mid set, translucent
+        self.sil, self.d_sil = props.new_mask()    # action plane, solid
+        self.fg, self.d_fg = props.new_mask()      # defocused foreground
+        self.red, self.d_red = props.new_mask()    # red line work
+        self.lit, self.d_lit = props.new_mask()    # emissive, cool
+        self.warm, self.d_warm = props.new_mask()  # emissive, warm
+        self.rays, self.d_rays = props.new_mask()  # light-shaft source
         self.txt = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         self.d_txt = ImageDraw.Draw(self.txt)
+
         self.flash = 0.0
         self.cool = 0.0
         self.zoom = 1.0
@@ -89,245 +98,290 @@ class Frame:
         self.wind = 0.0
         self.embers = 0.6
         self.haze = 0.0
+        self.reflect = 0.0
+        self.ray_at = None
+        self.ray_amt = 0.0
+        self.backlights = []
+        self.fog = 0.30
 
 
-# --- shared furniture ----------------------------------------------------
+# --- typography ----------------------------------------------------------
+def rule(d, cx, y, w, col, a, h=2):
+    if w <= 1 or a <= 0.01:
+        return
+    d.rectangle([cx - w / 2, y, cx + w / 2, y + h],
+                fill=(col[0], col[1], col[2], int(245 * a)))
+
+
+def eyebrow(d, cx, y, text, a, col=(214, 206, 204), size=19, trk=12, flank=0):
+    """A tracked micro-label, optionally flanked by hairlines."""
+    if a <= 0.01 or not text:
+        return 0
+    f = font(LABEL_MED, size)
+    w, _ = text_size(f, text, trk)
+    tracked(d, (cx, y), text, f, (col[0], col[1], col[2], int(232 * a)), trk,
+            anchor_center=True)
+    if flank:
+        for s in (-1, 1):
+            x0 = cx + s * (w / 2 + 22)
+            x1 = x0 + s * flank
+            d.rectangle([min(x0, x1), y + size * 0.42, max(x0, x1),
+                         y + size * 0.42 + 1],
+                        fill=(col[0], col[1], col[2], int(150 * a)))
+    return w
+
+
+def display_line(d, cx, y, text, size, a, trk=4, col=(240, 236, 234),
+                 shadow=True, fnt_path=DISPLAY):
+    f = font(fnt_path, size)
+    w, _ = text_size(f, text, trk)
+    if shadow:
+        d.text((cx - w / 2 + 5, y + 6), text, font=f, fill=(0, 0, 0, int(165 * a)))
+    tracked(d, (cx, y), text, f, (col[0], col[1], col[2], int(250 * a)), trk,
+            anchor_center=True)
+    return w
+
+
 def chapter_plate(f, t):
-    """Top-right chapter label and the top-left tick, as established in v8."""
-    a = window(t, S_ROAD + 2.6, S_ROAD + 3.5, S_END + 1, S_END + 2)
+    """Running corner furniture: the chapter name and a tick rule."""
+    a = window(t, S_ROAD + 2.9, S_ROAD + 3.8, S_END + 1, S_END + 2)
     if a <= 0.01:
         return
-    fnt = font(DISPLAY_LIGHT, 21)
+    fnt = font(LABEL, 19)
     label = TEXT["chapter"]
-    col = (222, 214, 212, int(190 * a))
-    # label slides in from the right as it fades
+    w, _ = text_size(fnt, label, 6)
     dx = (1 - a) * 26
-    wdt, _ = text_size(fnt, label, 5)
-    tracked(f.d_txt, (W - 72 - wdt + dx, 46), label, fnt, col, 5)
-    # red tick, top-left, draws itself on
-    k = ramp(t, S_ROAD + 2.7, S_ROAD + 3.6)
-    f.d_txt.rectangle([72, 46, 72 + 150 * k, 49], fill=(RED[0], RED[1], RED[2],
-                                                        int(230 * a)))
+    tracked(f.d_txt, (W - 74 - w + dx, 46), label, fnt,
+            (224, 216, 214, int(196 * a)), 6)
+    k = ramp(t, S_ROAD + 3.0, S_ROAD + 3.9)
+    f.d_txt.rectangle([74, 47, 74 + 158 * k, 49],
+                      fill=(RED[0], RED[1], RED[2], int(228 * a)))
 
 
 def chapter_card(f, t):
-    """A full chapter title where the story actually starts.
-
-    v8 announced ADHYAY 1 only as a 20px label in the corner. Stating it
-    properly tells the audience this is a story in acts, and gives them
-    somewhere to stand before the shayari begins.
-    """
+    """The chapter title, set as a proper editorial plate."""
     t0 = S_ROAD
-    a = window(t, t0 + 0.15, t0 + 0.85, t0 + 2.35, t0 + 3.15)
+    a = window(t, t0 + 0.15, t0 + 0.95, t0 + 2.55, t0 + 3.45)
     if a <= 0.01:
         return
-    rise = smootherstep(ramp(t, t0 + 0.15, t0 + 0.95))
-    dy = (1 - rise) * 18
-    cy = H * 0.40
+    rise = smootherstep(ramp(t, t0 + 0.15, t0 + 1.05))
+    dy = (1 - rise) * 16
+    cx = W / 2
+    cy = H * 0.395 + dy
 
-    num = TEXT.get("chapter_number", "")
+    eyebrow(f.d_txt, cx, cy - 74, TEXT.get("chapter_number", ""), a,
+            col=RED_HOT, size=18, trk=15, flank=46)
+
     name = TEXT.get("chapter_name", "")
-    gloss = TEXT.get("chapter_gloss", "")
+    w = display_line(f.d_txt, cx, cy, name, 104, a, trk=10, fnt_path=EDITORIAL)
 
-    if num:
-        nf = font(DISPLAY_LIGHT, 27)
-        tracked(f.d_txt, (W / 2, cy - 54 + dy), num, nf,
-                (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(236 * a)), 13,
-                anchor_center=True)
-    if name:
-        bf = font(DISPLAY, 92)
-        wdt, _ = text_size(bf, name, 7)
-        f.d_txt.text((W / 2 - wdt / 2 + 3, cy + dy + 4), name, font=bf,
-                     fill=(0, 0, 0, int(150 * a)))
-        tracked(f.d_txt, (W / 2, cy + dy), name, bf,
-                (238, 233, 230, int(246 * a)), 7, anchor_center=True)
-        # rule that opens outward from the centre
-        sw = smootherstep(ramp(t, t0 + 0.45, t0 + 1.25))
-        uw = wdt * 0.5 * sw
-        uy = cy + dy + 104
-        f.d_txt.rectangle([W / 2 - uw / 2, uy, W / 2 + uw / 2, uy + 3],
-                          fill=(RED[0], RED[1], RED[2], int(230 * a)))
+    sw = smootherstep(ramp(t, t0 + 0.5, t0 + 1.4))
+    rule(f.d_txt, cx, cy + 128, (w + 150) * sw, (190, 176, 172), a * 0.55, 1)
+
+    gloss = TEXT.get("chapter_gloss", "")
     if gloss:
-        gf = font(DISPLAY_LIGHT, 21)
-        tracked(f.d_txt, (W / 2, cy + dy + 122), gloss, gf,
-                (206, 198, 196, int(205 * a)), 9, anchor_center=True)
+        eyebrow(f.d_txt, cx, cy + 146, gloss, a * 0.92, col=(204, 196, 194),
+                size=17, trk=11)
 
 
 def shayari_credit(f, t):
-    a = window(t, 16.2, 17.3, 22.0, 23.4)
+    a = window(t, 16.4, 17.5, 22.2, 23.6)
     if a <= 0.01:
         return
-    small = font(DISPLAY_LIGHT, 15)
-    big = font(DISPLAY_LIGHT, 19)
-    tracked(f.d_txt, (72, H - 112), "SHAYARI", small,
-            (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(220 * a)), 4)
-    tracked(f.d_txt, (72, H - 90), TEXT["shayari_credit"], big,
-            (226, 219, 217, int(205 * a)), 4)
+    f_s = font(LABEL, 14)
+    f_b = font(EDITORIAL, 26)
+    tracked(f.d_txt, (76, H - 126), TEXT.get("credit_label", "WORDS BY"), f_s,
+            (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(216 * a)), 7)
+    f.d_txt.text((76, H - 104), TEXT["shayari_credit"], font=f_b,
+                 fill=(228, 221, 219, int(212 * a)))
+    f.d_txt.rectangle([76, H - 62, 76 + 92 * a, H - 61],
+                      fill=(RED[0], RED[1], RED[2], int(180 * a)))
 
 
 def shayari_lines(f, t):
-    """The recited couplet, set like the verse captions later in the film.
+    """The recited couplet, set in italic serif - deliberately a different
+    voice from the verse captions later in the film.
 
-    Lines live in intro_text.json. Leave them empty and the slot simply does
-    not draw, so the cut still plays clean.
+    Lines live in intro_text.json. An empty slot draws nothing, so the cut
+    still plays clean before they are filled in.
     """
     for slot in TEXT.get("shayari", []):
         lines = [l for l in slot.get("lines", []) if l.strip()]
         if not lines:
             continue
-        t0, t1 = slot["t"], slot["t"] + slot.get("hold", 5.2)
-        a = window(t, t0, t0 + 0.55, t1 - 0.5, t1)
+        t0 = slot["t"]
+        t1 = t0 + slot.get("hold", 5.2)
+        a = window(t, t0, t0 + 0.6, t1 - 0.55, t1)
         if a <= 0.01:
             continue
-        fnt = font(DISPLAY, 58)
+        fnt = font(VERSE, 62)
         hot = set(w.upper() for w in slot.get("accent", []))
-        y = H * 0.50 - len(lines) * 42
-        rise = (1 - smootherstep(ramp(t, t0, t0 + 0.55))) * 22
+        y = H * 0.50 - len(lines) * 44
+        rise = (1 - smootherstep(ramp(t, t0, t0 + 0.6))) * 20
         for ln in lines:
-            words = ln.upper().split()
+            words = ln.split()
             widths = [f.d_txt.textlength(w + " ", font=fnt) for w in words]
             x = W / 2 - sum(widths) / 2
             for wd, ww in zip(words, widths):
-                key = wd.strip(",.!?-")
-                col = RED_HOT if key in hot else (238, 233, 230)
+                key = wd.strip(",.!?-—").upper()
+                col = RED_HOT if key in hot else (240, 235, 232)
+                f.d_txt.text((x + 3, y + rise + 4), wd, font=fnt,
+                             fill=(0, 0, 0, int(140 * a)))
                 f.d_txt.text((x, y + rise), wd, font=fnt,
-                             fill=(col[0], col[1], col[2], int(236 * a)))
+                             fill=(col[0], col[1], col[2], int(240 * a)))
                 x += ww
-            y += 76
+            y += 82
+
+
+def backlight(f, cx, cy, w, h, amt, warm=False):
+    """Queue a soft pool of light behind the action, so ranks of silhouettes
+    read as separate shapes instead of one mass. Resolved in render()."""
+    if amt <= 0.004:
+        return
+    f.backlights.append((cx, cy, w, h, amt,
+                         (244, 176, 142) if warm else (226, 188, 182)))
 
 
 def walker_x(t):
-    """The protagonist's path across the whole intro - one continuous walk."""
     if t < S_ROAD:
         return W * 0.16
     k = (t - S_ROAD) / (S_END - S_ROAD)
-    # he drifts right, pauses at the house, then commits to the light
     return W * (0.16 + 0.34 * smoothstep(clamp(k * 1.25)))
 
 
-def walker(f, t, h=176, depth=1.0):
+def walker(f, t, h=176):
     x = walker_x(t)
-    ph = t * 5.4
-    props.figure(f.d_sil, x, GY, h, phase=ph)
+    props.figure(f.d_sil, x, GY, h, phase=t * 5.4)
     return x
 
 
 # --- S0  BRAND  0 -> 6.48 ------------------------------------------------
 def s_brand(f, t):
     f.intensity = 0.30 + 0.70 * ramp(t, 0.30, 2.2)
-    f.glow_y = 0.67
-    f.embers = 0.35 + 0.65 * ramp(t, 0.2, 2.5)
+    f.glow_y = 0.60
+    f.embers = 0.4 + 0.6 * ramp(t, 0.2, 2.5)
+    f.fog = 0.18
     f.pulse = 0.55 * pulse_at(t, b(0), 0.30) + 0.22 * pulse_at(t, b(1), 0.25)
 
     a = window(t, b(0), b(0) + 0.42, b(1) + 1.55, b(2) - 0.08)
     if a <= 0.01:
         return
-    # wordmark settles in with a touch of overshoot, then pushes in slowly
     k = ramp(t, b(0), b(0) + 0.55)
-    sc = lerp(1.10, 1.0, ease_out_back(k, 0.9)) * lerp(1.0, 1.045,
-                                                       ramp(t, b(1), b(2)))
+    sc = lerp(1.10, 1.0, ease_out_back(k, 0.9)) * lerp(1.0, 1.045, ramp(t, b(1), b(2)))
     size = max(10, int(132 * sc))
-    fnt = font(DISPLAY, size)
-    wdt, _ = text_size(fnt, "AMAN", int(14 * sc))
-    x = W / 2 - wdt / 2
+    cx = W / 2
     y = H * 0.40 - size * 0.5
 
-    f.d_txt.text((x + 4, y + 5), "AMAN", font=fnt, fill=(0, 0, 0, int(150 * a)))
-    tracked(f.d_txt, (x, y), "AMAN", fnt, (238, 233, 230, int(248 * a)), int(14 * sc))
+    w = display_line(f.d_txt, cx, y, "AMAN", size, a, trk=int(14 * sc))
 
-    # the rule sweeps out from under the mark
     sweep = smootherstep(ramp(t, b(0) + 0.30, b(0) + 1.05))
-    if sweep > 0.01:
-        uw = wdt * sweep
-        uy = y + size * 1.00
-        f.d_txt.rectangle([W / 2 - uw / 2, uy, W / 2 + uw / 2, uy + 4],
-                          fill=(RED[0], RED[1], RED[2], int(240 * a)))
+    rule(f.d_txt, cx, y + size * 1.00, w * sweep, RED, a, 4)
 
     sa = window(t, b(0) + 0.95, b(0) + 1.7, b(1) + 1.55, b(2) - 0.08)
-    if sa > 0.01:
-        sf = font(DISPLAY_LIGHT, 23)
-        tracked(f.d_txt, (W / 2, y + size * 1.18), TEXT["production"], sf,
-                (214, 206, 204, int(215 * sa)), 11, anchor_center=True)
+    eyebrow(f.d_txt, cx, y + size * 1.20, TEXT["production"], sa, size=20,
+            trk=13, flank=52)
+
+    # the mark throws a little light of its own
+    mf = font(DISPLAY, size)
+    mw, _ = text_size(mf, "AMAN", int(14 * sc))
+    f.d_rays.rectangle([cx - mw / 2, y + size * 0.22, cx + mw / 2, y + size * 0.86],
+                       fill=int(150 * a))
+    f.ray_at = (cx, y + size * 0.55)
+    f.ray_amt = 0.30 * a
     f.flash = 0.30 * pulse_at(t, b(0), 0.10)
 
 
 # --- S1  TITLE  6.48 -> 12.45 -------------------------------------------
 def s_title(f, t):
-    """The title lands on a world, not on black - we are inside the story by 7s."""
+    """The title lands on a world. By seven seconds we are inside the story."""
     k = ramp(t, S_TITLE, S_TITLE + 1.4)
-    f.intensity = 1.0
     f.glow_y = 0.69
-    f.embers = 0.85
-    f.haze = 0.55 * k
+    f.embers = 0.9
+    f.haze = 0.60 * k
+    f.fog = 0.42
+    f.reflect = 0.42 * k
+    f.rain = 0.10 * k
     f.pulse = 0.60 * pulse_at(t, S_TITLE, 0.28) + 0.25 * pulse_at(t, b(3), 0.22)
     f.flash = 0.38 * pulse_at(t, S_TITLE, 0.09)
     f.zoom = lerp(1.0, 1.055, smoothstep(ramp(t, S_TITLE, S_ROAD)))
 
-    rv = window(t, S_TITLE - 0.1, S_TITLE + 1.1, S_END, S_END + 1)
-    if rv > 0.01:
-        # three ridge planes - the depth v8's single gradient never had
+    if k > 0.01:
+        # four planes of depth instead of one gradient
+        props.ridge(f.d_far, GY - 236, 268, 91, span=(-0.4, 1.4), rough=0.6,
+                    floor=GY + 30)
+        props.pylon(f.d_far, W * 0.19, GY - 150, 190, lw=2)
+        props.pylon(f.d_far, W * 0.33, GY - 160, 150, lw=2)
         props.ridge(f.d_bg, GY - 150, 210, 31, span=(-0.35, 1.35), rough=0.8,
                     floor=GY + 54)
         props.ridge(f.d_bg, GY - 74, 132, 77, span=(-0.25, 1.25), rough=1.1,
                     floor=GY + 54)
-        # blood moon low on the ridge
-        mr = 36
-        mx, my = W * 0.715, GY - 348
-        f.d_warm.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=115)
+
+        mr = 38
+        mx, my = W * 0.715, GY - 352
+        f.d_warm.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=120)
+        f.d_rays.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=235)
+        f.ray_at = (mx, my)
+        f.ray_amt = 0.42 * k
+
         props.dead_tree(f.d_bg, W * 0.845, GY - 46, 250, seed=14, t=t, wind=0.5)
+        props.dead_tree(f.d_bg, W * 0.075, GY - 30, 190, seed=57, t=t, wind=0.5)
         props.ridge(f.d_bg, GY + 30, 46, 5, span=(-0.2, 1.2), rough=1.3,
                     floor=GY + 96)
+        props.bird_flock(f.d_bg, W * 0.33, GY - 400, 150, t * 0.5, n=8, seed=3)
+        props.grass(f.d_sil, -60, W + 60, GY + 46, 34, seed=12, n=120,
+                    wind=0.5, t=t)
+        props.debris(f.d_sil, -40, W + 40, GY + 58, seed=21, n=22)
+        props.fg_frame(f.d_fg, t, seed=8, side_only=True)
 
     a = window(t, S_TITLE, S_TITLE + 0.40, b(3) + 1.35, S_ROAD - 0.06)
     if a > 0.01:
         ks = ramp(t, S_TITLE, S_TITLE + 0.5)
         sc = lerp(1.11, 1.0, ease_out(ks, 3.2))
         size = max(10, int(152 * sc))
-        fnt = font(DISPLAY, size)
-        title = TEXT["title"]
-        trk = int(3 * sc)
-        wdt, _ = text_size(fnt, title, trk)
-        x = W / 2 - wdt / 2
-        # lifts away at the end instead of cutting
-        y = H * 0.405 - size * 0.5 - 46 * ease_in(ramp(t, b(3) + 1.0, S_ROAD), 2.2)
+        cx = W / 2
+        y = H * 0.395 - size * 0.5 - 46 * ease_in(ramp(t, b(3) + 1.0, S_ROAD), 2.2)
+
+        eyebrow(f.d_txt, cx, y - 34, TEXT["production"], a * 0.8, size=16,
+                trk=13, flank=44, col=(196, 188, 186))
 
         off = (1 - ks) * 11
-        if off > 0.4:  # a hint of mis-registration that settles on the beat
-            tracked(f.d_txt, (x - off, y), title, fnt,
-                    (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(150 * a)), trk)
-        f.d_txt.text((x + 5, y + 6), title, font=fnt, fill=(0, 0, 0, int(165 * a)))
-        tracked(f.d_txt, (x, y), title, fnt, (240, 236, 234, int(250 * a)), trk)
+        if off > 0.4:
+            fnt = font(DISPLAY, size)
+            ww, _ = text_size(fnt, TEXT["title"], int(3 * sc))
+            tracked(f.d_txt, (cx - ww / 2 - off, y), TEXT["title"], fnt,
+                    (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(150 * a)), int(3 * sc))
+        w = display_line(f.d_txt, cx, y, TEXT["title"], size, a, trk=int(3 * sc))
 
         sw = smootherstep(ramp(t, S_TITLE + 0.25, S_TITLE + 1.05))
-        uw = wdt * 0.46 * sw
-        uy = y + size * 1.00
-        f.d_txt.rectangle([W / 2 - uw / 2, uy, W / 2 + uw / 2, uy + 5],
-                          fill=(RED[0], RED[1], RED[2], int(245 * a)))
+        rule(f.d_txt, cx, y + size * 1.00, w * 0.46 * sw, RED, a, 5)
 
         sa = window(t, b(3) - 0.45, b(3) + 0.35, b(3) + 1.35, S_ROAD - 0.06)
-        if sa > 0.01:
-            sf = font(DISPLAY_LIGHT, 25)
-            tracked(f.d_txt, (W / 2, uy + 26), TEXT["subtitle"], sf,
-                    (219, 211, 209, int(225 * sa)), 10, anchor_center=True)
+        eyebrow(f.d_txt, cx, y + size * 1.00 + 26, TEXT["subtitle"], sa,
+                size=19, trk=12)
 
 
 # --- S2  THE ROAD  12.45 -> 18.41 ---------------------------------------
 def s_road(f, t):
-    """Somewhere to walk. v8 put the figure on an empty gradient; here there is
-    a road under him, poles going past and weather coming down."""
+    """Somewhere to walk, and a full roadside to walk it past."""
     k = ramp(t, S_ROAD, S_ROAD + 1.3)
-    f.intensity = 1.0
     f.glow_y = 0.69
-    f.haze = 0.62
-    f.rain = 0.18 + 0.82 * ramp(t, S_ROAD + 0.2, S_ROAD + 2.6)
+    f.haze = 0.64
+    f.fog = 0.46
+    f.reflect = 0.62
+    f.rain = 0.22 + 0.78 * ramp(t, S_ROAD + 0.2, S_ROAD + 2.6)
     f.wind = 0.26
     f.embers = 0.45
     f.pulse = 0.34 * pulse_at(t, S_ROAD, 0.26)
 
+    props.ridge(f.d_far, GY - 240, 272, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
     props.ridge(f.d_bg, GY - 150, 210, 31, span=(-0.35, 1.35), rough=0.8,
                 floor=GY + 54)
     props.ridge(f.d_bg, GY - 74, 132, 77, span=(-0.25, 1.25), rough=1.1,
                 floor=GY + 54)
+
+    # distant town glow on the horizon - somewhere he is walking away from
+    f.d_red.ellipse([W * 0.02, GY - 78, W * 0.32, GY - 30], fill=22)
 
     vy = GY - 6
     scroll = (t * 0.30) % 1.0
@@ -336,17 +390,15 @@ def s_road(f, t):
                scroll=scroll, surface=drs)
     f.red.paste(rs.point(lambda v: int(v * 0.075)), (0, 0), rs)
 
-    # poles march past: the clearest read of forward motion in the whole intro
-    span = 520.0
+    # poles and wires marching past: the clearest read of forward motion here
+    pm, pm_d = props.new_mask()
+    span = 430.0
     off = (t * 72.0) % span
     prev = None
-    pm, pm_d = props.new_mask()
-    for i in range(-1, 5):
-        px = W * 1.12 - i * span + off
-        depth = 1.0
-        ph = 240 - abs(px - W * 0.6) * 0.055
-        ph = max(90, ph)
-        if -220 < px < W + 220:
+    for i in range(-1, 6):
+        px = W * 1.14 - i * span + off
+        ph = max(90, 250 - abs(px - W * 0.6) * 0.050)
+        if -240 < px < W + 240:
             props.pole(pm_d, px, GY - 26, ph, arms=2)
             if prev is not None:
                 props.wire(pm_d, prev[0], prev[1] - prev[2] * 0.84, px,
@@ -355,61 +407,112 @@ def s_road(f, t):
     f.sil.paste(pm, (0, 0), pm)
     f.red.paste(pm.point(lambda v: int(v * 0.30)), (0, 0), pm)
 
-    props.fence(f.d_sil, -40, W + 40, GY + 40, 34, lw=3, step=72)
+    # pylons behind, a lamp in front
+    props.pylon(f.d_bg, W * 0.80 - (t - S_ROAD) * 14, GY - 110, 240, lw=3)
+    props.pylon(f.d_bg, W * 1.06 - (t - S_ROAD) * 14, GY - 120, 200, lw=3)
+    lx = W * 0.90 - (t - S_ROAD) * 40
+    if -100 < lx < W + 100:
+        lm, dlm = props.new_mask()
+        lamp = props.street_lamp(dlm, lx, GY + 10, 300, bend=-1)
+        f.sil.paste(lm, (0, 0), lm)
+        f.red.paste(lm.point(lambda v: int(v * 0.34)), (0, 0), lm)
+        f.d_warm.ellipse([lamp[0] - 16, lamp[1] - 14, lamp[0] + 16, lamp[1] + 14],
+                         fill=180)
+        f.d_rays.ellipse([lamp[0] - 14, lamp[1] - 12, lamp[0] + 14, lamp[1] + 12],
+                         fill=210)
+        f.ray_at = (lamp[0], lamp[1])
+        f.ray_amt = 0.26
+        f.d_warm.ellipse([lamp[0] - 150, GY + 16, lamp[0] + 150, GY + 56], fill=20)
+
+    backlight(f, W * 0.55, GY - 24, W * 1.20, 400, 0.042)
+    props.fence(f.d_sil, -40, W + 40, GY + 40, 34, lw=3, step=58)
+    props.grass(f.d_sil, -60, W + 60, GY + 50, 36, seed=5, n=140, wind=0.8, t=t)
+    props.debris(f.d_sil, -40, W + 40, GY + 62, seed=9, n=26)
+    props.puddle(f.d_red, W * 0.34, GY + 56, 280, 26, fill=30)
+    props.puddle(f.d_red, W * 0.72, GY + 70, 200, 20, fill=26)
+    props.splashes(f.d_lit, -40, W + 40, GY + 46, t, n=48, seed=4,
+                   strength=f.rain, fill=120)
+    props.fg_frame(f.d_fg, t, seed=15, side_only=True)
     walker(f, t)
 
-    # lightning on the bar: one frame of the whole landscape at full contrast
+    # lightning: one frame of the whole landscape at full contrast
     lt = b(5)
     if lt <= t < lt + 0.16:
         f.flash = 0.80 * math.exp(-(t - lt) / 0.055)
         f.intensity *= 1.5
-    # a crow lifts off the wire as it strikes
     ct = ramp(t, lt, lt + 2.4)
     if 0.01 < ct < 0.995:
-        cx = lerp(W * 0.42, W * 1.05, ct)
-        cy = lerp(GY - 230, GY - 430, ease_out(ct, 2.0))
-        props.crow(f.d_sil, cx, cy, 26, t * 13.0)
+        props.crow(f.d_sil, lerp(W * 0.42, W * 1.05, ct),
+                   lerp(GY - 230, GY - 430, ease_out(ct, 2.0)), 26, t * 13.0)
 
 
 # --- S3  THE TOWN  18.41 -> 24.37 ---------------------------------------
 def s_town(f, t):
-    """A town that lights up, then closes itself to him - told with windows."""
+    """A town that lights up and then closes itself to him, told with windows."""
     k = smootherstep(ramp(t, S_TOWN, S_TOWN + 1.5))
-    f.intensity = 1.0
-    f.glow_y = 0.70
-    f.haze = 0.70
-    f.rain = 0.62 * (1 - 0.5 * ramp(t, b(7), S_CROWD))
+    f.glow_y = 0.71
+    f.haze = 0.72
+    f.fog = 0.46
+    f.reflect = 0.66
+    f.rain = 0.64 * (1 - 0.45 * ramp(t, b(7), S_CROWD))
     f.wind = 0.34
     f.embers = 0.6
     f.pulse = 0.30 * pulse_at(t, S_TOWN, 0.26) + 0.26 * pulse_at(t, b(7), 0.3)
 
-    props.ridge(f.d_bg, GY - 158, 218, 31, span=(-0.35, 1.35), rough=0.8,
-                floor=GY + 54)
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    drift = (t - S_TOWN) * 11.0
+    props.skyline(f.d_far, GY - 60, -140 - drift * 0.4, W + 180, 190, 420,
+                  seed=77, n=12, lean=0.14)
 
-    # the skyline slides in from the right as the camera drifts
-    slide = lerp(W * 0.55, 0.0, k) - (t - S_TOWN) * 11.0
+    slide = lerp(W * 0.55, 0.0, k) - drift
     sk = Image.new("L", (W, H), 0)
     dsk = ImageDraw.Draw(sk)
     wins = props.skyline(dsk, GY - 18, 120 + slide, W * 1.35 + slide, 150, 380,
                          seed=4, n=13, lean=0.22)
     f.bg.paste(sk, (0, 0), sk)
 
+    props.water_tower(f.d_bg, W * 0.22 + slide * 0.7, GY - 300, 170)
+    for i, ax in enumerate([0.42, 0.58, 0.79]):
+        props.antenna(f.d_bg, W * ax + slide * 0.7, GY - 250 - i * 30,
+                      130 + i * 24, seed=i)
+    props.laundry_line(f.d_bg, W * 0.30 + slide, GY - 190,
+                       W * 0.48 + slide, GY - 215, seed=2, n=5)
+    props.smoke_column(f.d_bg, W * 0.63 + slide * 0.7, GY - 330, 330, t,
+                       fill=52, seed=6, width=22)
+
     # windows: lit, then going out left to right after the bar
     douse = ramp(t, b(7), b(7) + 2.1)
     for (wx, wy, ww, wh, r) in wins:
         if wx < -40 or wx > W + 40:
             continue
-        u = clamp(wx / W)
-        on = 1.0 - clamp((douse * 1.45 - u) * 2.4)
-        flick = 0.78 + 0.22 * math.sin(t * (2.0 + r * 5) + r * 9)
-        amt = on * flick * k
+        on = 1.0 - clamp((douse * 1.45 - clamp(wx / W)) * 2.4)
+        amt = on * (0.78 + 0.22 * math.sin(t * (2.0 + r * 5) + r * 9)) * k
         if amt <= 0.04:
             continue
         f.d_warm.rectangle([wx, wy, wx + ww, wy + wh], fill=int(120 * amt))
 
-    props.fence(f.d_sil, -40, W + 40, GY + 44, 40, lw=3, step=64)
-    props.dead_tree(f.d_sil, W * 0.12 + slide * 0.3, GY + 10, 250, seed=22,
+    for lx in (W * 0.16, W * 0.56, W * 0.93):
+        lm, dlm = props.new_mask()
+        lamp = props.street_lamp(dlm, lx + slide * 0.25, GY + 12, 290,
+                                 bend=1 if lx < W / 2 else -1)
+        f.sil.paste(lm, (0, 0), lm)
+        f.red.paste(lm.point(lambda v: int(v * 0.34)), (0, 0), lm)
+        glowk = k * (1 - 0.55 * douse)
+        f.d_warm.ellipse([lamp[0] - 15, lamp[1] - 13, lamp[0] + 15, lamp[1] + 13],
+                         fill=int(170 * glowk))
+        f.d_warm.ellipse([lamp[0] - 140, GY + 18, lamp[0] + 140, GY + 58],
+                         fill=int(19 * glowk))
+
+    props.fence(f.d_sil, -40, W + 40, GY + 44, 40, lw=3, step=56)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 34, seed=18, n=130, wind=0.9, t=t)
+    props.debris(f.d_sil, -40, W + 40, GY + 64, seed=11, n=24)
+    props.puddle(f.d_red, W * 0.46, GY + 60, 320, 28, fill=30)
+    props.splashes(f.d_lit, -40, W + 40, GY + 48, t, n=44, seed=7,
+                   strength=f.rain, fill=110)
+    props.dead_tree(f.d_sil, W * 0.10 + slide * 0.3, GY + 16, 260, seed=22,
                     t=t, wind=0.8)
+    props.fg_frame(f.d_fg, t, seed=23, side_only=True)
     walker(f, t)
 
 
@@ -418,15 +521,17 @@ _CROWD = None
 
 
 def _crowd_layout():
-    """Three ranks, clustered toward the middle of frame rather than spread in
-    an even line - an even line reads as a fence, a cluster reads as a crowd."""
+    """Five ranks, clustered toward the middle. An even line reads as a fence;
+    a cluster with depth reads as a crowd."""
     global _CROWD
     if _CROWD is None:
         r = np.random.default_rng(99)
         rows = []
-        for (yy, hh, n, spread) in [(GY - 24, 126, 9, 0.38),
-                                    (GY + 24, 168, 7, 0.34),
-                                    (GY + 84, 214, 5, 0.26)]:
+        for (yy, hh, n, spread) in [(GY - 58, 92, 14, 0.44),
+                                    (GY - 24, 126, 12, 0.38),
+                                    (GY + 24, 168, 9, 0.34),
+                                    (GY + 84, 214, 7, 0.28),
+                                    (GY + 150, 272, 5, 0.22)]:
             xs = W * 0.5 + r.normal(0, W * spread, n)
             rows.append([(float(x), yy, hh * r.uniform(0.88, 1.12),
                           float(r.random())) for x in xs])
@@ -434,13 +539,12 @@ def _crowd_layout():
     return _CROWD
 
 
-def crowd(f, t, amount, turn_to=None, eyes=0.0, arms_up=0.0, scale=1.0):
-    """The onlookers. They fade up row by row and turn their heads to track him,
-    so the shot keeps changing without anything cutting."""
+def crowd(f, t, amount, turn_to=None, eyes=0.0, arms_up=0.0, scale=1.0,
+          umbrellas=0.0):
     if amount <= 0.01:
         return
     for ri, row in enumerate(_crowd_layout()):
-        ra = clamp((amount - ri * 0.16) * 1.7)
+        ra = clamp((amount - ri * 0.11) * 1.7)
         if ra <= 0.02:
             continue
         for (x, y, h, seed) in row:
@@ -448,49 +552,76 @@ def crowd(f, t, amount, turn_to=None, eyes=0.0, arms_up=0.0, scale=1.0):
             ht = 0.0
             if turn_to is not None:
                 ht = clamp((turn_to - x) / (W * 0.45), -1, 1)
-            e = clamp((eyes * 1.5) - (x / W))
             head = props.figure(f.d_sil, x, y, hh, phase=seed * 6.3,
                                 walking=False, head_turn=ht, arms_up=arms_up)
+            if umbrellas > 0.01 and seed > 1.0 - umbrellas:
+                uw = hh * 0.40
+                uy = y - hh * 1.02
+                f.d_sil.chord([x - uw, uy - hh * 0.34, x + uw, uy + hh * 0.18],
+                              180, 360, fill=255)
+                for rb in (-0.55, 0.0, 0.55):
+                    f.d_sil.line([(x, uy - hh * 0.07),
+                                  (x + uw * rb, uy + hh * 0.045)],
+                                 fill=255, width=max(1, int(hh * 0.022)))
+                f.d_sil.line([(x, uy), (x, y - hh * 0.60)], fill=255,
+                             width=max(1, int(hh * 0.030)))
+            e = clamp((eyes * 1.5) - (x / W))
             if e > 0.03 and head:
                 props.eye(f.d_red, head[0], head[1], head[2] * 0.42 * e, 1.0)
 
 
 def s_crowd(f, t):
-    f.intensity = 1.0
     f.glow_y = 0.71
-    f.haze = 0.72
-    f.rain = 0.22
+    f.haze = 0.74
+    f.fog = 0.44
+    f.reflect = 0.58
+    f.rain = 0.30
     f.wind = 0.2
     f.embers = 0.5
     f.zoom = lerp(1.0, 1.07, smoothstep(ramp(t, S_CROWD, S_MASK)))
     f.pulse = 0.30 * pulse_at(t, S_CROWD, 0.26) + 0.5 * pulse_at(t, b(9), 0.3)
 
-    props.ridge(f.d_bg, GY - 158, 218, 31, span=(-0.35, 1.35), rough=0.8,
-                floor=GY + 54)
-    props.skyline(f.d_bg, GY - 10, -80, W + 80, 110, 280, seed=4, n=13, lean=0.18)
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    props.skyline(f.d_bg, GY - 18, -80, W + 80, 110, 280, seed=4, n=13, lean=0.18)
+    props.smoke_column(f.d_bg, W * 0.78, GY - 300, 300, t, fill=44, seed=9)
+
+    # a wall of light behind them, so the ranks separate as silhouettes
+    backlight(f, W * 0.5, GY - 70, W * 1.05, 520, 0.085)
+    f.d_rays.ellipse([W * 0.26, GY - 210, W * 0.74, GY + 30], fill=130)
+    f.ray_at = (W * 0.5, GY - 120)
+    f.ray_amt = 0.30
 
     amount = ramp(t, S_CROWD, S_CROWD + 2.0) + 0.45 * ramp(t, b(9), b(9) + 1.4)
-    wx = walker_x(t)
-    # before the bar they watch him; on it, every head turns to camera at once
     snap = smootherstep(ramp(t, b(9), b(9) + 0.45))
-    crowd(f, t, amount, turn_to=lerp(wx, W / 2, snap),
-          eyes=ramp(t, b(9), b(9) + 1.9))
+    crowd(f, t, amount, turn_to=lerp(walker_x(t), W / 2, snap),
+          eyes=ramp(t, b(9), b(9) + 1.9), umbrellas=0.17)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 32, seed=31, n=110, wind=0.7, t=t)
+    props.splashes(f.d_lit, -40, W + 40, GY + 50, t, n=36, seed=12,
+                   strength=f.rain, fill=100)
+    props.fg_frame(f.d_fg, t, seed=33, side_only=True)
     walker(f, t)
     f.flash = 0.42 * pulse_at(t, b(9), 0.07)
 
 
 # --- S5  THE MASK  30.33 -> 36.30 ---------------------------------------
 def s_mask(f, t):
-    """The one real image v8 had - the red eye - now built up to and paid off."""
-    f.intensity = 1.0
+    """The one real image v8 had - the red eye - built up to and paid off."""
     f.glow_y = 0.60
-    f.haze = 0.5
-    f.rain = 0.12
-    f.embers = 0.9
+    f.haze = 0.52
+    f.fog = 0.38
+    f.reflect = 0.48
+    f.rain = 0.16
+    f.embers = 0.95
     f.pulse = 0.34 * pulse_at(t, S_MASK, 0.26)
     f.zoom = lerp(1.07, 1.0, smoothstep(ramp(t, S_MASK, S_MASK + 1.6)))
 
-    crowd(f, t, 1.0 - 0.3 * ramp(t, b(11), S_HOUSE), scale=0.75)
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    props.skyline(f.d_bg, GY - 18, -80, W + 80, 100, 250, seed=4, n=13, lean=0.18)
+    backlight(f, W * 0.5, GY - 40, W * 1.00, 470, 0.070)
+    crowd(f, t, 1.0 - 0.3 * ramp(t, b(11), S_HOUSE), scale=0.75, umbrellas=0.12)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 30, seed=41, n=100, wind=0.6, t=t)
 
     rise = smootherstep(ramp(t, S_MASK, S_MASK + 1.5))
     burst = ease_out(ramp(t, b(11), b(11) + 1.5), 2.0)
@@ -499,7 +630,6 @@ def s_mask(f, t):
     r = lerp(120, 304, rise) * (1 + 0.10 * burst)
 
     if a_mask > 0.02:
-        # cracks advance one step per beat, so the fracture is on the music
         crack = clamp((t - (S_MASK + 1.2)) / (b(11) - (S_MASK + 1.2)))
         solid, d_solid = props.new_mask()
         lines, d_lines = props.new_mask()
@@ -509,7 +639,21 @@ def s_mask(f, t):
         f.sil.paste(solid.point(lambda v: int(v * body)), (0, 0), solid)
         f.red.paste(lines.point(lambda v: int(v * 0.62 * a_mask)), (0, 0), lines)
 
-    # the eye behind it, burning brighter as the mask fails
+        # shards drifting off once it goes
+        if burst > 0.02:
+            rr = np.random.default_rng(13)
+            for i in range(22):
+                ang = rr.uniform(0, 6.283)
+                dist = r * (0.6 + 2.1 * burst * rr.uniform(0.5, 1.4))
+                sx = cx + math.cos(ang) * dist
+                sy = cy + math.sin(ang) * dist * 1.1 + burst * 70
+                sz = rr.uniform(5, 17) * (1 - burst * 0.4)
+                if sz < 1:
+                    continue
+                f.d_red.polygon([(sx, sy - sz), (sx + sz * 0.7, sy),
+                                 (sx, sy + sz), (sx - sz * 0.7, sy)],
+                                fill=int(150 * a_mask * (1 - burst * 0.5)))
+
     ea = window(t, S_MASK + 1.9, b(11) - 0.5, S_HOUSE - 1.0, S_HOUSE + 0.3)
     if ea > 0.02:
         er = r * (0.19 + 0.10 * burst)
@@ -518,142 +662,190 @@ def s_mask(f, t):
                         fill=int(248 * ea))
         f.d_lit.ellipse([cx - er * 0.34, cy - er * 0.25, cx + er * 0.34,
                          cy + er * 0.25], fill=int(150 * ea * glow))
+        f.d_rays.ellipse([cx - er, cy - er * 0.72, cx + er, cy + er * 0.72],
+                         fill=int(230 * ea))
+        f.ray_at = (cx, cy)
+        f.ray_amt = 0.52 * ea * (0.7 + 0.5 * burst)
     f.flash = 0.62 * pulse_at(t, b(11), 0.085)
 
 
 # --- S6  THE HOUSE  36.30 -> 42.26 --------------------------------------
 def s_house(f, t):
-    """The door that closes. v8 flashed a house outline for three seconds and
-    moved on; here it is a scene with a beginning and an end."""
+    """The door that closes - a scene with a beginning and an end."""
     f.intensity = 0.95
     f.glow_y = 0.71
-    f.haze = 0.68
-    f.rain = 0.30 + 0.45 * ramp(t, b(13), b(13) + 1.6)
+    f.haze = 0.70
+    f.fog = 0.46
+    f.reflect = 0.60
+    f.rain = 0.34 + 0.46 * ramp(t, b(13), b(13) + 1.6)
     f.wind = 0.30
     f.embers = 0.55
     f.pulse = 0.30 * pulse_at(t, S_HOUSE, 0.26) + 0.28 * pulse_at(t, b(13), 0.3)
 
+    props.ridge(f.d_far, GY - 244, 274, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
     props.ridge(f.d_bg, GY - 152, 212, 31, span=(-0.35, 1.35), rough=0.8,
                 floor=GY + 54)
     props.ridge(f.d_bg, GY - 70, 124, 77, span=(-0.25, 1.25), rough=1.1,
                 floor=GY + 54)
 
+    backlight(f, W * 0.42, GY - 30, W * 1.15, 430, 0.045)
     rise = smootherstep(ramp(t, S_HOUSE, S_HOUSE + 1.7))
     hy = GY + 26 + (1 - rise) * 200
     hx = W * 0.665
     hw = 320
-
     shut = smootherstep(ramp(t, b(13), b(13) + 0.75))
+
+    # neighbours, already dark
+    for nx, nw in ((W * 0.16, 190), (W * 1.02, 230)):
+        nm, dnm = props.new_mask()
+        props.house(dnm, nx, hy - 24, nw, lw=3)
+        f.bg.paste(nm, (0, 0), nm)
+
     hm, dhm = props.new_mask()
     door_rect = props.house(dhm, hx, hy, hw, lw=5)
     f.sil.paste(hm, (0, 0), hm)
     f.red.paste(hm.point(lambda v: int(v * 0.46)), (0, 0), hm)
-    props.fence(f.d_sil, hx - hw * 1.5, hx + hw * 1.1, hy + 20, 42, lw=3, step=58)
+
+    props.smoke_column(f.d_bg, hx + hw * 0.26, hy - hw * 0.78 - 60, 260, t,
+                       fill=46, seed=5, width=16)
+    props.fence(f.d_sil, hx - hw * 1.9, hx + hw * 1.3, hy + 20, 42, lw=3, step=52)
     props.dead_tree(f.d_sil, hx + hw * 0.80, hy + 14, 300, seed=31, t=t, wind=0.7)
-    # mailbox
+    props.dead_tree(f.d_bg, hx - hw * 1.7, hy + 6, 230, seed=63, t=t, wind=0.7)
+    props.laundry_line(f.d_sil, hx - hw * 1.1, hy - 110, hx - hw * 0.5, hy - 130,
+                       seed=4, n=3)
+    # mailbox and path
     f.d_sil.line([(hx - hw * 0.95, hy + 20), (hx - hw * 0.95, hy - 46)],
                  fill=255, width=4)
     f.d_sil.rectangle([hx - hw * 0.95 - 17, hy - 70, hx - hw * 0.95 + 17, hy - 44],
                       fill=255)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 36, seed=51, n=140, wind=0.9, t=t)
+    props.debris(f.d_sil, -40, W + 40, GY + 64, seed=19, n=26)
+    props.puddle(f.d_red, W * 0.30, GY + 62, 300, 26, fill=30)
+    props.splashes(f.d_lit, -40, W + 40, GY + 50, t, n=46, seed=15,
+                   strength=f.rain, fill=112)
 
-    # warm light spilling out of the doorway, and someone standing in it
     lit = rise * (1 - shut)
     if lit > 0.02:
         x0, y0, x1, y1 = door_rect
         f.d_warm.rectangle([x0 + 3, y0 + 3, x1 - 3, y1], fill=int(142 * lit))
-        # the light falls onto the ground in front of the door
         sp = (x1 - x0) * 1.9
         f.d_warm.polygon([(x0 + 3, y1), (x1 - 3, y1),
                           (hx + sp * 0.5, y1 + 62), (hx - sp * 0.5, y1 + 62)],
                          fill=int(46 * lit))
+        f.d_rays.rectangle([x0 + 3, y0 + 3, x1 - 3, y1], fill=int(205 * lit))
+        f.ray_at = ((x0 + x1) / 2, (y0 + y1) / 2)
+        f.ray_amt = 0.34 * lit
         props.figure(f.d_sil, (x0 + x1) / 2, y1 - 2, (y1 - y0) * 0.84,
                      walking=False, lean=0.1)
 
+    props.fg_frame(f.d_fg, t, seed=43, side_only=True)
     walker(f, t)
     f.haze += 0.1 * shut
 
 
 # --- S7  THE THREADS  42.26 -> 48.22 ------------------------------------
 def s_thread(f, t):
-    """Strings come down out of the dark. Everyone is on one except him -
-    and then they snap."""
+    """Strings come down out of the dark. Everyone is on one except him."""
     f.intensity = 0.92
     f.glow_y = 0.67
-    f.haze = 0.60
-    f.rain = 0.28
-    f.wind = 0.42
-    f.embers = 0.75
+    f.haze = 0.62
+    f.fog = 0.40
+    f.reflect = 0.50
+    f.rain = 0.30
+    f.wind = 0.48
+    f.embers = 0.8
     f.pulse = 0.30 * pulse_at(t, S_THREAD, 0.26) + 0.40 * pulse_at(t, b(15), 0.3)
+
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
 
     reach = smootherstep(ramp(t, S_THREAD, S_THREAD + 2.2))
     reach *= 1.0 - 0.25 * ramp(t, b(15) + 0.4, S_LIGHT)
     if reach > 0.02:
-        props.branch_curtain(f.d_red, -1, reach, 41, t=t, lw=7, fill=82)
-        props.branch_curtain(f.d_red, +1, reach, 67, t=t, lw=7, fill=82)
-        props.branch_curtain(f.d_sil, -1, reach * 0.92, 41, t=t, lw=9)
-        props.branch_curtain(f.d_sil, +1, reach * 0.92, 67, t=t, lw=9)
+        for sd in (41, 67, 103, 151):
+            side = -1 if sd % 2 else 1
+            props.branch_curtain(f.d_red, side, reach, sd, t=t, lw=7, fill=76)
+            props.branch_curtain(f.d_bg, side, reach * 0.92, sd, t=t, lw=10)
+        props.dead_tree(f.d_bg, W * 0.08, GY + 20, 420, seed=71, t=t, wind=1.2)
+        props.dead_tree(f.d_bg, W * 0.94, GY + 20, 390, seed=83, t=t, wind=1.2)
 
     snapped = ease_out(ramp(t, b(15), b(15) + 1.9), 1.6)
     hooked = ramp(t, S_THREAD + 0.6, S_THREAD + 2.4)
-    crowd(f, t, 1.0, scale=0.8, arms_up=hooked * (1 - snapped) * 0.85)
+    arm = hooked * (1 - snapped) * 0.85
+    backlight(f, W * 0.5, GY - 50, W * 1.05, 480, 0.080)
+    crowd(f, t, 1.0, scale=0.8, arms_up=arm)
 
-    # anchor each string to a raised hand rather than letting it hang in space
+    # every string lands on a raised hand and follows it back down
     ends = []
-    for row in _crowd_layout()[:2]:
+    for ri, row in enumerate(_crowd_layout()[:3]):
         for (x, y, hgt, seed) in row:
+            if seed < 0.58:
+                continue
             hh = hgt * 0.8
             sho = y - hh * 0.74
             sgn = 1 if seed > 0.5 else -1
-            ends.append((x + sgn * hh * 0.28,
-                         lerp(sho + hh * 0.33, sho - hh * 0.19, hooked) - 6))
-    props.threads(f.d_red, [], -20, GY - 118, t, snapped=snapped, fill=86,
+            ends.append((x + sgn * hh * lerp(0.17, 0.28, arm),
+                         lerp(sho + hh * 0.33, sho - hh * 0.19, arm) - 6))
+    props.threads(f.d_red, [], -20, GY - 118, t, snapped=snapped, fill=62,
                   ends=ends)
+
+    props.leaves(f.d_sil, t, n=34, seed=5, strength=1.0)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 34, seed=61, n=120, wind=1.1, t=t)
+    props.fg_frame(f.d_fg, t, seed=53)
     walker(f, t)
     f.flash = 0.34 * pulse_at(t, b(15), 0.08)
 
 
 # --- S8  THE LIGHT  48.22 -> 52.53 --------------------------------------
 def s_light(f, t):
-    """Into the light, watched. Hands off to v8's first verse on a white frame."""
+    """Into the light, watched. Hands off to the first verse on a white frame."""
     k = smootherstep(ramp(t, S_LIGHT, S_LIGHT + 1.1))
-    f.intensity = lerp(1.0, 0.72, k)
+    f.intensity = lerp(1.0, 0.70, k)
     f.glow_y = 0.69
-    f.haze = 0.45
-    f.rain = 0.40
+    f.haze = 0.48
+    f.fog = 0.34
+    f.reflect = 0.72
+    f.rain = 0.46
     f.wind = 0.22
     f.embers = 0.35
     f.cool = 0.58 * k
     f.pulse = 0.5 * pulse_at(t, S_LIGHT, 0.3)
 
     tighten = smootherstep(ramp(t, b(17), S_END))
-    spread = lerp(300, 196, tighten) * k
     apex_x = W * 0.5
-    if spread > 4:
-        cone, dc = props.new_mask()
-        props.spot_cone(dc, apex_x, -70, spread, GY + 40, fill=96)
-        props.dust(dc, apex_x, spread, -60, GY + 30, t, n=80, fill=190)
-        f.lit.paste(cone, (0, 0), cone)
+    spread = lerp(300, 196, tighten) * k
 
-    # pool on the ground
+    # two rakers behind the main key, so the stage has shape
     if k > 0.02:
+        cone, dc = props.new_mask()
+        for ax, sp, br in ((W * 0.20, 120 * k, 30), (W * 0.82, 130 * k, 30)):
+            props.spot_cone(dc, ax, -70, sp, GY + 40, fill=br)
+        if spread > 4:
+            props.spot_cone(dc, apex_x, -70, spread, GY + 40, fill=96)
+            props.dust(dc, apex_x, spread, -60, GY + 30, t, n=96, fill=190)
+        f.lit.paste(cone, (0, 0), cone)
+        f.rays.paste(cone.point(lambda v: int(v * 1.6)), (0, 0), cone)
+        f.ray_at = (apex_x, 0)
+        f.ray_amt = 0.30 * k
         f.d_lit.ellipse([apex_x - spread * 1.18, GY - 26,
                          apex_x + spread * 1.18, GY + 34], fill=int(120 * k))
 
-    # he walks in, and his shadow runs back out of the light
     wx = lerp(walker_x(S_LIGHT), apex_x, smootherstep(ramp(t, S_LIGHT, b(17))))
     sh, dsh = props.new_mask()
     dsh.polygon([(wx - 24, GY), (wx + 24, GY),
                  (wx + 150, GY + 128), (wx - 150, GY + 128)], fill=170)
     f.sil.paste(sh, (0, 0), sh)
-    props.figure(f.d_sil, wx, GY, 150, phase=t * 5.4,
-                 walking=t < b(17) + 0.4)
+    props.figure(f.d_sil, wx, GY, 150, phase=t * 5.4, walking=t < b(17) + 0.4)
 
-    # the crowd rings the light, closing in on the last bar
     close = smootherstep(ramp(t, b(17), S_END))
-    crowd(f, t, 1.0, scale=lerp(0.85, 1.12, close))
+    crowd(f, t, 1.0, scale=lerp(0.85, 1.12, close), umbrellas=0.14)
+    props.splashes(f.d_lit, -40, W + 40, GY + 48, t, n=56, seed=17,
+                   strength=f.rain, fill=150)
+    props.grass(f.d_sil, -60, W + 60, GY + 52, 30, seed=71, n=100, wind=0.6, t=t)
+    props.fg_frame(f.d_fg, t, seed=63, side_only=True)
 
     f.flash = 0.45 * pulse_at(t, S_LIGHT, 0.09)
-    # whiteout that meets v8's existing cut frame-for-frame
     if t > S_END - 0.24:
         f.flash = max(f.flash, ease_in(ramp(t, S_END - 0.24, S_END), 2.4) * 1.5)
 
@@ -691,8 +883,13 @@ def render(t):
     img = world.background(t, glow_y=f.glow_y, glow_x=f.glow_x,
                            intensity=f.intensity, pulse=f.pulse, cool=f.cool)
 
-    # the distant set is dark but translucent, so near silhouettes still read
-    img = props.paint(img, f.bg, (6, 2, 3), 0.76, 2.0)
+    # far set first, lifted by fog so distance reads as distance
+    img = props.paint(img, f.far, (16, 5, 6), 0.62, 2.8)
+    img = post.depth_fog(img, near=0.58, far=0.90, strength=f.fog)
+    img = props.paint(img, f.bg, (6, 2, 3), 0.78, 2.0)
+
+    for (cx, cy, bw, bh, amt, col) in f.backlights:
+        img = post.soft_glow(img, cx, cy, bw, bh, amt, col)
 
     if f.haze > 0.01:
         hz = world.haze_band(t, 0.76, 1.02, f.haze)
@@ -701,13 +898,20 @@ def render(t):
             a = arr[:, :, 3:4] / 255.0
             img += (arr[:, :, :3] - img) * a * 0.55
 
-    # emissive passes sit behind the near occluders
     img = props.emit(img, f.warm, (255, 146, 68), gain=0.30, blur=6.0)
     img = props.emit(img, f.warm, (255, 198, 134), gain=0.26, blur=1.0)
     img = props.emit(img, f.lit, (226, 222, 230), gain=1.05, blur=3.0)
-
     img = props.paint(img, f.sil, (0, 0, 0), 1.0, 0.75)
+
+    if f.reflect > 0.01:
+        refl = ImageChops.lighter(f.bg, f.sil)
+        img = post.reflection(img, refl, GY + 46, strength=f.reflect, t=t)
+
     img = props.emit(img, f.red, RED_HOT, gain=1.0, blur=1.4)
+
+    if f.ray_at is not None and f.ray_amt > 0.01:
+        img = post.god_rays(img, f.rays, f.ray_at[0], f.ray_at[1],
+                            strength=f.ray_amt)
 
     rn = _rain.draw(t, f.rain, f.wind)
     if rn is not None:
@@ -718,17 +922,26 @@ def render(t):
         arr = np.asarray(em, dtype=np.float32)
         img += arr[:, :, :3] * (arr[:, :, 3:4] / 255.0) * 0.8
 
-    img = world.apply_grain(img, t, 6.5)
-    img = world.apply_vignette(img, 1.0)
+    # defocused foreground, last of the geometry, confined to the frame edges
+    if f.fg.getbbox() is not None:
+        fg = ImageChops.multiply(f.fg, _EDGE_MASK)
+        img = props.paint(img, fg, (0, 0, 0), 0.80, 11.0)
+
+    img = post.glow(img)
 
     txt = np.asarray(f.txt, dtype=np.float32)
     ta = txt[:, :, 3:4] / 255.0
     if ta.max() > 0.003:
         img += (txt[:, :, :3] - img) * ta
 
+    img = world.apply_grain(img, t, 6.0)
+    img = world.apply_vignette(img, 1.0)
+
     if f.flash > 0.004:
         img += 255.0 * min(1.0, f.flash)
 
+    img = post.grade(img)
+    img = post.gate_weave(img, t, 1.0)
     img = world.letterbox(img, t)
 
     if f.zoom > 1.001:
@@ -736,7 +949,9 @@ def render(t):
         cw, ch = int(W / z), int(H / z)
         x0, y0 = (W - cw) // 2, (H - ch) // 2
         pil = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
-        pil = pil.crop((x0, y0, x0 + cw, y0 + ch)).resize((W, H), Image.BICUBIC)
-        return np.asarray(pil)
+        out = np.asarray(pil.crop((x0, y0, x0 + cw, y0 + ch))
+                         .resize((W, H), Image.BICUBIC))
+    else:
+        out = np.clip(img, 0, 255).astype(np.uint8)
 
-    return np.clip(img, 0, 255).astype(np.uint8)
+    return post.chromatic_u8(out, 2.0)
