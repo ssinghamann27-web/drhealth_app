@@ -47,7 +47,7 @@ _RNG = np.random.default_rng(4242)
 _DITHER = _RNG.random((H + 64, W + 64)).astype(np.float32) - 0.5
 
 
-def clarity(img, amount=0.44, radius=11):
+def clarity(img, amount=0.58, radius=13):
     """Local contrast. The single biggest step between 'rendered' and 'graded'."""
     if amount <= 0.01:
         return img
@@ -57,7 +57,7 @@ def clarity(img, amount=0.44, radius=11):
     return img + detail[:, :, None] * amount
 
 
-def highlight_rolloff(img, knee=186.0, ceiling=258.0):
+def highlight_rolloff(img, knee=168.0, ceiling=268.0):
     """Shoulder the top end so whites bloom off instead of clipping flat."""
     x = img
     over = x > knee
@@ -85,7 +85,7 @@ def split_tone(img, shadow=(-2.0, 0.0, 5.0), highlight=(8.0, 2.0, -4.0),
     return img + (sh * (1.0 - k) + hi * k) * amount
 
 
-def anamorphic(img, threshold=166.0, amount=0.62, length=220,
+def anamorphic(img, threshold=118.0, amount=0.70, length=260,
                tint=(0.62, 0.80, 1.0)):
     """Horizontal streaks off the hot points, the way a wide lens flares."""
     lum = _down(np.ascontiguousarray(img.max(axis=2)))
@@ -99,7 +99,7 @@ def anamorphic(img, threshold=166.0, amount=0.62, length=220,
     return img + _up(s)[:, :, None] * amount * np.asarray(tint, np.float32)
 
 
-def glow(img, threshold=142.0, amount=0.34, radius=9, tint=(1.0, 0.86, 0.80)):
+def glow(img, threshold=52.0, amount=0.50, radius=13, tint=(1.0, 0.80, 0.74)):
     """A wide soft bloom off everything bright - lights, highlights and type.
 
     This is most of what reads as 'shine': light in a modern grade does not
@@ -113,7 +113,7 @@ def glow(img, threshold=142.0, amount=0.34, radius=9, tint=(1.0, 0.86, 0.80)):
     return img + g * amount * np.asarray(tint, np.float32)
 
 
-def sparkle(img, threshold=232.0, amount=0.30, arm=46):
+def sparkle(img, threshold=186.0, amount=0.42, arm=58):
     """Cross glints on the very hottest points."""
     lum = _down(np.ascontiguousarray(img.max(axis=2)))
     hot = np.maximum(0.0, lum - threshold)
@@ -145,9 +145,21 @@ def dither(img, t, amount=1.1):
     return img + _DITHER[oy:oy + H, ox:ox + W][:, :, None] * amount
 
 
+def lift(img, gamma=0.945, gain=1.045, black=1.0):
+    """Open the midtones a little.
+
+    The film is graded very dark - mean luma sits around 12-25 of 255 - so
+    without this there is almost nothing above any sensible glow threshold
+    and the whole finishing pass has nothing to act on.
+    """
+    x = np.clip(img - black, 0, None) * gain
+    return np.power(x / 255.0, gamma) * 255.0
+
+
 def finish(frame_u8, t):
     """frame_u8: HxWx3 uint8 -> HxWx3 uint8."""
     img = frame_u8.astype(np.float32)
+    img = lift(img)
     img = clarity(img)
     img = glow(img)
     img = anamorphic(img)
