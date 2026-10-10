@@ -621,3 +621,112 @@ def splashes(d, x0, x1, base_y, t, fill=255, n=40, seed=0, strength=1.0):
         if a <= 3:
             continue
         d.ellipse([x - rr, y - rr * 0.30, x + rr, y + rr * 0.30], outline=a, width=1)
+
+
+# --- chapter two onward --------------------------------------------------
+def crowd_sea(d, t, density, rows=8, seed=5, base_y=None, top=0.30,
+              sway=1.0, fill=255, eye_d=None, eyes=0.0):
+    """A crowd that fills the frame from horizon to camera.
+
+    Ranks are drawn far-to-near so the near ones occlude, which is what makes
+    a mass of silhouettes read as deep rather than as a pattern.
+    """
+    base_y = GROUND if base_y is None else base_y
+    r = np.random.default_rng(seed)
+    for ri in range(rows):
+        u = ri / max(1, rows - 1)
+        amt = clamp((density - u * 0.22) * 1.5)
+        if amt <= 0.02:
+            continue
+        y = lerp(base_y - H * top, base_y + H * 0.26, u)
+        h = lerp(44, 430, u ** 1.5)
+        n = max(3, int(26 - ri * 2.6))
+        for i in range(n):
+            x = (i + 0.5) / n * W + r.uniform(-1, 1) * (W / n) * 0.45
+            x += math.sin(t * 0.8 + ri * 1.3 + i) * 12 * sway * (0.3 + u)
+            hh = h * r.uniform(0.86, 1.14) * (0.35 + 0.65 * amt)
+            head = figure(d, x, y, hh, phase=r.random() * 6.3, walking=False,
+                          fill=fill)
+            if eye_d is not None and eyes > 0.02 and head and u < 0.8:
+                k = clamp(eyes * 1.6 - u)
+                if k > 0.05 and r.random() < 0.55:
+                    eye(eye_d, head[0], head[1], head[2] * 0.40 * k, 1.0)
+
+
+def looming_shadow(d, cx, base_y, h, t, fill=255, head_turn=0.0, lean=0.0):
+    """An oversized silhouette standing behind the action."""
+    lw = max(6, int(h * 0.055))
+    hip = base_y - h * 0.44
+    sho = base_y - h * 0.74
+    headr = h * 0.105
+    hcy = base_y - h * 0.87
+    drift = math.sin(t * 0.5) * h * 0.012
+    for s in (1, -1):
+        d.line([(cx, hip), (cx + s * h * 0.07, hip + h * 0.23)], fill=fill, width=lw)
+        d.line([(cx + s * h * 0.07, hip + h * 0.23), (cx + s * h * 0.11, base_y)],
+               fill=fill, width=lw)
+    d.line([(cx, hip), (cx + lean * h * 0.04, sho)], fill=fill, width=lw)
+    for s in (1, -1):
+        d.line([(cx + s * h * 0.015, sho + h * 0.02),
+                (cx + s * h * 0.10, sho + h * 0.18)], fill=fill, width=lw)
+        d.line([(cx + s * h * 0.10, sho + h * 0.18),
+                (cx + s * h * 0.14, sho + h * 0.35)], fill=fill, width=lw)
+    hx = cx + lean * h * 0.05 + head_turn * headr * 0.5
+    d.ellipse([hx - headr, hcy + drift - headr, hx + headr, hcy + drift + headr],
+              fill=fill)
+    return (hx, hcy + drift, headr)
+
+
+def hanging(d, obj_fn, x, y, t, drop, sway=1.0, thread_top=-30, fill=255):
+    """Draw a prop suspended on a thread, optionally cut and falling."""
+    dy = drop * H * 1.3
+    xx = x + math.sin(t * 1.1 + x * 0.01) * 9 * sway + drop * 60
+    yy = y + dy
+    if drop < 0.02:
+        d.line([(x + math.sin(t * 0.9 + x * 0.02) * 4, thread_top), (xx, yy)],
+               fill=fill, width=2)
+    obj_fn(xx, yy)
+
+
+def bubbles(d, t, n=70, seed=0, fill=255, strength=1.0):
+    if strength <= 0.02:
+        return
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        ph = r.random() * 6.283
+        sp = 40 + r.random() * 130
+        x = r.random() * W + math.sin(t * 0.7 + ph) * 26
+        y = (r.random() * H - t * sp) % (H + 120) - 60
+        rr = (2 + r.random() * 9) * strength
+        d.ellipse([x - rr, y - rr, x + rr, y + rr], outline=int(fill * 0.9),
+                  width=max(1, int(rr * 0.35)))
+
+
+def water_shafts(d, t, n=7, seed=0, fill=255, strength=1.0):
+    """Caustic light columns coming down through water."""
+    if strength <= 0.02:
+        return
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        x = (i + 0.5) / n * W + math.sin(t * 0.33 + i) * 70
+        w_top = r.uniform(26, 70)
+        w_bot = w_top * r.uniform(2.4, 4.6)
+        a = int(fill * r.uniform(0.35, 1.0) * strength
+                * (0.6 + 0.4 * math.sin(t * 0.6 + i * 1.7)))
+        if a <= 3:
+            continue
+        d.polygon([(x - w_top, -40), (x + w_top, -40),
+                   (x + w_bot, H + 40), (x - w_bot, H + 40)], fill=a)
+
+
+def sinking_figures(d, t, n=7, seed=0, fill=255, strength=1.0):
+    if strength <= 0.02:
+        return
+    r = np.random.default_rng(seed)
+    for i in range(n):
+        ph = r.random()
+        sp = 24 + r.random() * 44
+        y = ((ph * (H + 500)) + t * sp) % (H + 500) - 160
+        x = r.random() * W + math.sin(t * 0.4 + i) * 38
+        h = 90 + r.random() * 170
+        figure(d, x, y, h, phase=0, walking=False, arms_up=0.85, fill=fill)

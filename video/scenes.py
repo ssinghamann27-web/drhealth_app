@@ -39,12 +39,21 @@ S_MASK = b(10)                          # 30.334
 S_HOUSE = b(12)                         # 36.297
 S_THREAD = b(14)                        # 42.260
 S_LIGHT = b(16)                         # 48.222
-S_END = 52.5333                         # v8's hard cut into the first verse
+S_END = 52.5333                         # hand-off to the original cut
+S_BHEED = b(18)      # 54.19  the crowd
+S_PARCH = b(22)      # 66.11  the shadow
+S_DHAAGE = b(26)     # 78.04  breaking threads
+S_PAANI = b(30)      # 89.96  deep water
+S_SACH = b(34)       # 101.89 the lonely truth
+S_OUTRO = b(38)      # 113.81
+S_FIN = 138.667
 
 GY = props.GROUND
 
 _rain = world.Rain(n=760)
 _embers = world.Embers(n=120)
+_bokeh = world.Bokeh()
+_wisps = world.Wisps()
 
 _here = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_here, "intro_text.json")) as fh:
@@ -102,6 +111,10 @@ class Frame:
         self.ray_at = None
         self.ray_amt = 0.0
         self.backlights = []
+        self.cam_x = 0.0
+        self.cam_y = 0.0
+        self.set_amt = 1.0
+        self.texture = 1.0
         self.fog = 0.30
 
 
@@ -267,19 +280,19 @@ def s_brand(f, t):
     if a <= 0.01:
         return
     k = ramp(t, b(0), b(0) + 0.55)
-    sc = lerp(1.10, 1.0, ease_out_back(k, 0.9)) * lerp(1.0, 1.045, ramp(t, b(1), b(2)))
-    size = max(10, int(132 * sc))
+    sc = lerp(1.09, 1.0, ease_out_back(k, 0.9)) * lerp(1.0, 1.035, ramp(t, b(1), b(2)))
+    size = max(10, int(146 * sc))
     cx = W / 2
     y = H * 0.40 - size * 0.5
 
-    w = display_line(f.d_txt, cx, y, "AMAN", size, a, trk=int(14 * sc))
+    w = display_line(f.d_txt, cx, y, "AMAN", size, a, trk=int(6 * sc))
 
     sweep = smootherstep(ramp(t, b(0) + 0.30, b(0) + 1.05))
-    rule(f.d_txt, cx, y + size * 1.00, w * sweep, RED, a, 4)
+    rule(f.d_txt, cx, y + size * 0.98, w * 1.05 * sweep, RED, a, 4)
 
     sa = window(t, b(0) + 0.95, b(0) + 1.7, b(1) + 1.55, b(2) - 0.08)
-    eyebrow(f.d_txt, cx, y + size * 1.20, TEXT["production"], sa, size=20,
-            trk=13, flank=52)
+    eyebrow(f.d_txt, cx, y + size * 1.14, TEXT["production"], sa, size=21,
+            trk=14)
 
     # the mark throws a little light of its own
     mf = font(DISPLAY, size)
@@ -305,7 +318,15 @@ def s_title(f, t):
     f.flash = 0.38 * pulse_at(t, S_TITLE, 0.09)
     f.zoom = lerp(1.0, 1.055, smoothstep(ramp(t, S_TITLE, S_ROAD)))
 
-    if k > 0.01:
+    # The title owns a clean field first, as in the original; the world only
+    # comes up underneath it once the type starts to leave.
+    rv = smootherstep(ramp(t, b(3) + 0.35, S_ROAD))
+    f.set_amt = rv
+    f.haze = 0.60 * rv
+    f.reflect = 0.42 * rv
+    f.rain = 0.10 * rv
+
+    if rv > 0.01:
         # four planes of depth instead of one gradient
         props.ridge(f.d_far, GY - 236, 268, 91, span=(-0.4, 1.4), rough=0.6,
                     floor=GY + 30)
@@ -321,7 +342,7 @@ def s_title(f, t):
         f.d_warm.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=120)
         f.d_rays.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=235)
         f.ray_at = (mx, my)
-        f.ray_amt = 0.42 * k
+        f.ray_amt = 0.42 * rv
 
         props.dead_tree(f.d_bg, W * 0.845, GY - 46, 250, seed=14, t=t, wind=0.5)
         props.dead_tree(f.d_bg, W * 0.075, GY - 30, 190, seed=57, t=t, wind=0.5)
@@ -341,9 +362,6 @@ def s_title(f, t):
         cx = W / 2
         y = H * 0.395 - size * 0.5 - 46 * ease_in(ramp(t, b(3) + 1.0, S_ROAD), 2.2)
 
-        eyebrow(f.d_txt, cx, y - 34, TEXT["production"], a * 0.8, size=16,
-                trk=13, flank=44, col=(196, 188, 186))
-
         off = (1 - ks) * 11
         if off > 0.4:
             fnt = font(DISPLAY, size)
@@ -352,17 +370,20 @@ def s_title(f, t):
                     (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(150 * a)), int(3 * sc))
         w = display_line(f.d_txt, cx, y, TEXT["title"], size, a, trk=int(3 * sc))
 
-        sw = smootherstep(ramp(t, S_TITLE + 0.25, S_TITLE + 1.05))
-        rule(f.d_txt, cx, y + size * 1.00, w * 0.46 * sw, RED, a, 5)
+        sw = smootherstep(ramp(t, S_TITLE + 0.22, S_TITLE + 0.95))
+        rule(f.d_txt, cx, y + size * 0.98, w * 0.62 * sw, RED, a, 6)
 
-        sa = window(t, b(3) - 0.45, b(3) + 0.35, b(3) + 1.35, S_ROAD - 0.06)
-        eyebrow(f.d_txt, cx, y + size * 1.00 + 26, TEXT["subtitle"], sa,
-                size=19, trk=12)
+        # subtitle rides with the title, as in the original, not a beat later
+        sa = window(t, S_TITLE + 0.30, S_TITLE + 0.95, b(3) + 1.35,
+                    S_ROAD - 0.06)
+        eyebrow(f.d_txt, cx, y + size * 0.98 + 30, TEXT["subtitle"], sa,
+                size=20, trk=13)
 
 
 # --- S2  THE ROAD  12.45 -> 18.41 ---------------------------------------
 def s_road(f, t):
     """Somewhere to walk, and a full roadside to walk it past."""
+    f.cam_x = lerp(-30, 30, smoothstep(ramp(t, S_ROAD, S_TOWN)))
     k = ramp(t, S_ROAD, S_ROAD + 1.3)
     f.glow_y = 0.69
     f.haze = 0.64
@@ -449,6 +470,7 @@ def s_road(f, t):
 # --- S3  THE TOWN  18.41 -> 24.37 ---------------------------------------
 def s_town(f, t):
     """A town that lights up and then closes itself to him, told with windows."""
+    f.cam_x = lerp(40, -40, smoothstep(ramp(t, S_TOWN, S_CROWD)))
     k = smootherstep(ramp(t, S_TOWN, S_TOWN + 1.5))
     f.glow_y = 0.71
     f.haze = 0.72
@@ -672,6 +694,7 @@ def s_mask(f, t):
 # --- S6  THE HOUSE  36.30 -> 42.26 --------------------------------------
 def s_house(f, t):
     """The door that closes - a scene with a beginning and an end."""
+    f.cam_x = lerp(-25, 25, smoothstep(ramp(t, S_HOUSE, S_THREAD)))
     f.intensity = 0.95
     f.glow_y = 0.71
     f.haze = 0.70
@@ -845,48 +868,47 @@ def s_light(f, t):
     props.grass(f.d_sil, -60, W + 60, GY + 52, 30, seed=71, n=100, wind=0.6, t=t)
     props.fg_frame(f.d_fg, t, seed=63, side_only=True)
 
+    # No whiteout here any more: the film is rendered continuously now, and
+    # the original's own flash arrives through the keyed text layer.
     f.flash = 0.45 * pulse_at(t, S_LIGHT, 0.09)
-    if t > S_END - 0.24:
-        f.flash = max(f.flash, ease_in(ramp(t, S_END - 0.24, S_END), 2.4) * 1.5)
 
 
 # --- assembly ------------------------------------------------------------
-SCENES = [
-    (S_BRAND, S_TITLE, s_brand),
-    (S_TITLE, S_ROAD, s_title),
-    (S_ROAD, S_TOWN, s_road),
-    (S_TOWN, S_CROWD, s_town),
-    (S_CROWD, S_MASK, s_crowd),
-    (S_MASK, S_HOUSE, s_mask),
-    (S_HOUSE, S_THREAD, s_house),
-    (S_THREAD, S_LIGHT, s_thread),
-    (S_LIGHT, S_END + 0.2, s_light),
-]
-
-
-def build(t):
+def build(t, scene_fn=None):
     f = Frame()
-    for t0, t1, fn in SCENES:
-        if t0 <= t < t1:
-            fn(f, t)
-            break
-    chapter_plate(f, t)
-    chapter_card(f, t)
-    shayari_credit(f, t)
-    shayari_lines(f, t)
+    if scene_fn is None:
+        for t0, t1, fn in SCENES:
+            if t0 <= t < t1:
+                scene_fn = fn
+                break
+    if scene_fn is not None:
+        scene_fn(f, t)
+    if t < S_END:
+        # past the hand-off, v8's own plates and credits are keyed back in
+        chapter_plate(f, t)
+        chapter_card(f, t)
+        shayari_credit(f, t)
+        shayari_lines(f, t)
     return f
 
 
-def render(t):
-    """Compose one frame. Returns HxWx3 uint8 RGB."""
-    f = build(t)
+def _compose(t, scene_fn):
+    """Compose one frame for one scene. Returns HxWx3 uint8 RGB."""
+    f = build(t, scene_fn)
     img = world.background(t, glow_y=f.glow_y, glow_x=f.glow_x,
                            intensity=f.intensity, pulse=f.pulse, cool=f.cool)
 
     # far set first, lifted by fog so distance reads as distance
-    img = props.paint(img, f.far, (16, 5, 6), 0.62, 2.8)
+    if f.texture > 0.01:
+        for lay, gain in ((_wisps.draw(t, f.texture), 0.55),
+                          (_bokeh.draw(t, f.texture), 0.75)):
+            if lay is not None:
+                arr = np.asarray(lay, dtype=np.float32)
+                img += arr[:, :, :3] * (arr[:, :, 3:4] / 255.0) * gain
+
+    img = props.paint(img, f.far, (16, 5, 6), 0.62 * f.set_amt, 2.8)
     img = post.depth_fog(img, near=0.58, far=0.90, strength=f.fog)
-    img = props.paint(img, f.bg, (6, 2, 3), 0.78, 2.0)
+    img = props.paint(img, f.bg, (6, 2, 3), 0.78 * f.set_amt, 2.0)
 
     for (cx, cy, bw, bh, amt, col) in f.backlights:
         img = post.soft_glow(img, cx, cy, bw, bh, amt, col)
@@ -901,7 +923,7 @@ def render(t):
     img = props.emit(img, f.warm, (255, 146, 68), gain=0.30, blur=6.0)
     img = props.emit(img, f.warm, (255, 198, 134), gain=0.26, blur=1.0)
     img = props.emit(img, f.lit, (226, 222, 230), gain=1.05, blur=3.0)
-    img = props.paint(img, f.sil, (0, 0, 0), 1.0, 0.75)
+    img = props.paint(img, f.sil, (0, 0, 0), max(0.0, min(1.0, f.set_amt)), 0.75)
 
     if f.reflect > 0.01:
         refl = ImageChops.lighter(f.bg, f.sil)
@@ -944,10 +966,11 @@ def render(t):
     img = post.gate_weave(img, t, 1.0)
     img = world.letterbox(img, t)
 
-    if f.zoom > 1.001:
-        z = f.zoom
+    if f.zoom > 1.001 or abs(f.cam_x) > 0.5 or abs(f.cam_y) > 0.5:
+        z = max(1.001, f.zoom)
         cw, ch = int(W / z), int(H / z)
-        x0, y0 = (W - cw) // 2, (H - ch) // 2
+        x0 = int(np.clip((W - cw) // 2 + f.cam_x, 0, W - cw))
+        y0 = int(np.clip((H - ch) // 2 + f.cam_y, 0, H - ch))
         pil = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
         out = np.asarray(pil.crop((x0, y0, x0 + cw, y0 + ch))
                          .resize((W, H), Image.BICUBIC))
@@ -955,3 +978,306 @@ def render(t):
         out = np.clip(img, 0, 255).astype(np.uint8)
 
     return post.chromatic_u8(out, 2.0)
+
+
+# =========================================================================
+#  ADHYAY 2 - 6 : the backgrounds behind the original lyric layer.
+#  v8's typography is keyed off its own frames and composited over these,
+#  so the words, their timing and their highlights are untouched.
+# =========================================================================
+
+
+def s_bheed(f, t):
+    """He is swallowed by the mass. The crowd fills the frame to the lens."""
+    f.cam_x = lerp(-40, 40, smoothstep(ramp(t, S_BHEED, S_PARCH)))
+    k = ramp(t, S_BHEED, S_BHEED + 2.0)
+    f.glow_y = 0.66
+    f.haze = 0.56
+    f.fog = 0.40
+    f.reflect = 0.30
+    f.rain = 0.22
+    f.embers = 0.5
+    f.pulse = 0.34 * pulse_at(t, S_BHEED, 0.3) + 0.22 * pulse_at(t, b(20), 0.3)
+    f.zoom = lerp(1.0, 1.08, smoothstep(ramp(t, S_BHEED, S_PARCH)))
+
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    props.skyline(f.d_bg, GY - 14, -80, W + 80, 110, 300, seed=4, n=14, lean=0.18)
+    backlight(f, W * 0.5, GY - 90, W * 1.1, 560, 0.095)
+
+    density = 0.45 + 0.55 * k + 0.25 * ramp(t, b(20), S_PARCH)
+    props.crowd_sea(f.d_sil, t, density, rows=8, seed=5,
+                    eye_d=f.d_red, eyes=ramp(t, S_BHEED + 1.2, b(21)))
+    props.leaves(f.d_sil, t, n=20, seed=8, strength=0.7)
+    props.fg_frame(f.d_fg, t, seed=73, side_only=True)
+    f.flash = 0.30 * pulse_at(t, b(20), 0.08)
+
+
+def s_parchhai(f, t):
+    """His own shadow stands up behind him and stops copying him."""
+    f.cam_x = lerp(50, -50, smoothstep(ramp(t, S_PARCH, S_DHAAGE)))
+    k = smootherstep(ramp(t, S_PARCH, S_PARCH + 2.2))
+    f.glow_y = 0.62
+    f.haze = 0.50
+    f.fog = 0.34
+    f.reflect = 0.44
+    f.rain = 0.20
+    f.embers = 0.8
+    f.pulse = 0.34 * pulse_at(t, S_PARCH, 0.3) + 0.3 * pulse_at(t, b(24), 0.3)
+    f.zoom = lerp(1.08, 1.0, smoothstep(ramp(t, S_PARCH, S_PARCH + 2.0)))
+
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    # a wall of light that casts him
+    backlight(f, W * 0.5, GY - 150, W * 1.25, 700, 0.14)
+    f.d_rays.ellipse([W * 0.30, GY - 320, W * 0.70, GY - 40], fill=150)
+    f.ray_at = (W * 0.5, GY - 180)
+    f.ray_amt = 0.30 * k
+
+    # the shadow: locked to him at first, then it drifts off on its own
+    free = smootherstep(ramp(t, b(24), b(25)))
+    wx = W * (0.40 + 0.10 * math.sin(t * 0.45))
+    sx = lerp(wx, W * (0.62 + 0.16 * math.sin(t * 0.3 + 1.7)), free)
+    sh_h = lerp(260, H * 0.92, k)
+    head = props.looming_shadow(f.d_sil, sx, GY + 120, sh_h, t,
+                                head_turn=free * 0.9, lean=free * 0.6)
+    if head and free > 0.05:
+        props.eye(f.d_red, head[0], head[1], head[2] * 0.34 * free, 1.0)
+        f.d_rays.ellipse([head[0] - head[2] * 0.4, head[1] - head[2] * 0.3,
+                          head[0] + head[2] * 0.4, head[1] + head[2] * 0.3],
+                         fill=int(200 * free))
+        f.ray_at = (head[0], head[1])
+        f.ray_amt = 0.34 * free
+
+    props.crowd_sea(f.d_sil, t, 0.55, rows=4, seed=9, top=0.05, sway=0.6)
+    props.figure(f.d_sil, wx, GY + 30, 190, phase=t * 4.2)
+    props.grass(f.d_sil, -60, W + 60, GY + 60, 32, seed=81, n=100, wind=0.7, t=t)
+    props.fg_frame(f.d_fg, t, seed=83, side_only=True)
+    f.flash = 0.40 * pulse_at(t, b(24), 0.08)
+
+
+def s_dhaage(f, t):
+    """Everything was hanging on a thread. The threads go."""
+    f.zoom = lerp(1.0, 1.05, smoothstep(ramp(t, S_DHAAGE, S_PAANI)))
+    f.cam_y = lerp(-30, 30, smoothstep(ramp(t, S_DHAAGE, S_PAANI)))
+    f.glow_y = 0.66
+    f.haze = 0.52
+    f.fog = 0.38
+    f.reflect = 0.34
+    f.rain = 0.26
+    f.wind = 0.5
+    f.embers = 0.85
+    f.pulse = 0.34 * pulse_at(t, S_DHAAGE, 0.3) + 0.45 * pulse_at(t, b(28), 0.3)
+
+    props.ridge(f.d_far, GY - 250, 280, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    backlight(f, W * 0.5, GY - 70, W * 1.05, 520, 0.075)
+
+    cut = ease_out(ramp(t, S_DHAAGE + 1.6, b(29)), 1.5)
+    rng = np.random.default_rng(31)
+
+    # the set itself is suspended, and drops out piece by piece
+    items = []
+    for i in range(7):
+        x = (i + 0.5) / 7 * W + rng.uniform(-60, 60)
+        items.append((x, rng.uniform(0.0, 0.85), rng.uniform(150, 320)))
+    for i, (x, thr, size) in enumerate(items):
+        drop = clamp((cut - thr) * 2.2)
+        y = GY - 150 - (i % 3) * 90
+
+        def draw_house(px, py, s=size):
+            hm, dhm = props.new_mask()
+            props.house(dhm, px, py, s, lw=4)
+            f.sil.paste(hm, (0, 0), hm)
+            f.red.paste(hm.point(lambda v: int(v * 0.42)), (0, 0), hm)
+
+        props.hanging(f.d_red, draw_house, x, y, t, drop, fill=90)
+        if 0.01 < drop < 0.3:
+            f.d_lit.ellipse([x - 26, y - 150, x + 26, y - 100], fill=120)
+
+    # and so are the people
+    for i in range(11):
+        x = (i + 0.5) / 11 * W + rng.uniform(-30, 30)
+        thr = rng.uniform(0.0, 0.95)
+        drop = clamp((cut - thr) * 2.4)
+        y = GY + 20
+
+        def draw_fig(px, py):
+            props.figure(f.d_sil, px, py, 150, phase=0, walking=False,
+                         arms_up=0.9 * (1 - drop))
+
+        props.hanging(f.d_red, draw_fig, x, y, t, drop, fill=84)
+
+    props.figure(f.d_sil, W * 0.44, GY + 40, 190, phase=t * 4.6)
+    props.leaves(f.d_sil, t, n=40, seed=12, strength=1.2)
+    props.grass(f.d_sil, -60, W + 60, GY + 62, 32, seed=91, n=90, wind=1.2, t=t)
+    props.fg_frame(f.d_fg, t, seed=93, side_only=True)
+    f.flash = 0.42 * pulse_at(t, b(28), 0.08)
+
+
+def s_paani(f, t):
+    """Under. Cold, slow, and everything sinking past him."""
+    k = smootherstep(ramp(t, S_PAANI, S_PAANI + 2.4))
+    f.glow_y = 0.50
+    f.haze = 0.30
+    f.fog = 0.50
+    f.reflect = 0.0
+    f.rain = 0.0
+    f.embers = 0.0
+    f.cool = 0.88 * k
+    f.intensity = lerp(1.0, 0.62, k)
+    f.pulse = 0.30 * pulse_at(t, S_PAANI, 0.3)
+    f.zoom = lerp(1.0, 1.06, smoothstep(ramp(t, S_PAANI, S_SACH)))
+
+    sh, dsh = props.new_mask()
+    props.water_shafts(dsh, t, n=8, seed=2, fill=70, strength=k)
+    f.lit.paste(sh, (0, 0), sh)
+    f.rays.paste(sh.point(lambda v: int(v * 2.0)), (0, 0), sh)
+    f.ray_at = (W * 0.5, -40)
+    f.ray_amt = 0.34 * k
+
+    props.sinking_figures(f.d_sil, t, n=8, seed=4, strength=k)
+    props.bubbles(f.d_lit, t, n=90, seed=6, fill=130, strength=k)
+
+    # him, descending through it
+    dy = lerp(-H * 0.1, H * 0.34, smoothstep(ramp(t, S_PAANI, S_SACH)))
+    props.figure(f.d_sil, W * 0.5 + math.sin(t * 0.4) * 50, H * 0.46 + dy, 210,
+                 phase=0, walking=False, arms_up=0.35)
+    props.fg_frame(f.d_fg, t, seed=97, side_only=True)
+
+
+def s_sach(f, t):
+    """Everything strips away. One figure, one light, and what is left."""
+    f.cam_y = lerp(20, -20, smoothstep(ramp(t, S_SACH, S_OUTRO)))
+    k = smootherstep(ramp(t, S_SACH, S_SACH + 2.0))
+    f.glow_y = 0.70
+    f.haze = 0.26
+    f.fog = 0.22
+    f.reflect = 0.68
+    f.rain = 0.16
+    f.embers = 0.30
+    f.cool = lerp(0.88, 0.22, k)
+    f.intensity = lerp(0.62, 0.80, k)
+    f.pulse = 0.34 * pulse_at(t, S_SACH, 0.3)
+    f.zoom = lerp(1.06, 1.0, k)
+
+    apex = W * 0.5
+    spread = lerp(90, 210, k)
+    cone, dc = props.new_mask()
+    props.spot_cone(dc, apex, -70, spread, GY + 40, fill=104)
+    props.dust(dc, apex, spread, -60, GY + 30, t, n=70, fill=180)
+    f.lit.paste(cone, (0, 0), cone)
+    f.rays.paste(cone.point(lambda v: int(v * 1.5)), (0, 0), cone)
+    f.ray_at = (apex, 0)
+    f.ray_amt = 0.26 * k
+    f.d_lit.ellipse([apex - spread * 1.2, GY - 26, apex + spread * 1.2, GY + 34],
+                    fill=int(130 * k))
+
+    sh, dsh = props.new_mask()
+    dsh.polygon([(apex - 26, GY), (apex + 26, GY),
+                 (apex + 170, GY + 150), (apex - 170, GY + 150)], fill=160)
+    f.sil.paste(sh, (0, 0), sh)
+    props.figure(f.d_sil, apex, GY, 180, phase=0, walking=False)
+
+    # the watchers thin out and are gone
+    leave = 1.0 - smootherstep(ramp(t, S_SACH + 1.6, b(36)))
+    if leave > 0.02:
+        props.crowd_sea(f.d_sil, t, 0.55 * leave, rows=3, seed=13, top=0.02,
+                        sway=0.4)
+
+    # one last eye, far off, and then nothing
+    ea = window(t, b(36), b(36) + 0.8, b(37), b(37) + 1.2)
+    if ea > 0.02:
+        ex, ey = W * 0.80, GY - 230
+        er = 16 * ea
+        f.d_red.ellipse([ex - er, ey - er * 0.75, ex + er, ey + er * 0.75],
+                        fill=int(250 * ea))
+        f.d_rays.ellipse([ex - er, ey - er, ex + er, ey + er], fill=int(220 * ea))
+        f.ray_at = (ex, ey)
+        f.ray_amt = 0.30 * ea
+    props.fg_frame(f.d_fg, t, seed=101, side_only=True)
+
+
+def s_outro(f, t):
+    """Back to the first image, emptied. The credits run over this."""
+    f.zoom = lerp(1.04, 1.0, smoothstep(ramp(t, S_OUTRO, 128.0)))
+    k = ramp(t, S_OUTRO, S_OUTRO + 3.0)
+    f.glow_y = 0.68
+    f.haze = 0.44
+    f.fog = 0.42
+    f.reflect = 0.40
+    f.rain = 0.18 * (1 - ramp(t, 128.0, 136.0))
+    f.embers = 0.9
+    f.intensity = lerp(0.80, 1.0, k) * (1.0 - 0.85 * ramp(t, 133.0, 138.2))
+    f.pulse = 0.30 * pulse_at(t, S_OUTRO, 0.3)
+
+    props.ridge(f.d_far, GY - 236, 268, 91, span=(-0.4, 1.4), rough=0.6,
+                floor=GY + 30)
+    props.ridge(f.d_bg, GY - 150, 210, 31, span=(-0.35, 1.35), rough=0.8,
+                floor=GY + 54)
+    props.ridge(f.d_bg, GY - 74, 132, 77, span=(-0.25, 1.25), rough=1.1,
+                floor=GY + 54)
+    props.dead_tree(f.d_bg, W * 0.845, GY - 46, 250, seed=14, t=t, wind=0.5)
+    props.dead_tree(f.d_bg, W * 0.075, GY - 30, 190, seed=57, t=t, wind=0.5)
+
+    mr = 36
+    mx, my = W * 0.715, GY - 348
+    f.d_warm.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=int(118 * k))
+    f.d_rays.ellipse([mx - mr, my - mr, mx + mr, my + mr], fill=int(230 * k))
+    f.ray_at = (mx, my)
+    f.ray_amt = 0.38 * k
+
+    props.grass(f.d_sil, -60, W + 60, GY + 46, 34, seed=12, n=110, wind=0.5, t=t)
+    props.debris(f.d_sil, -40, W + 40, GY + 58, seed=21, n=20)
+
+    # he walks out of frame and does not come back
+    gone = ramp(t, S_OUTRO, 124.0)
+    if gone < 0.995:
+        props.figure(f.d_sil, lerp(W * 0.46, W * 1.12, gone), GY, 168,
+                     phase=t * 5.0)
+    props.fg_frame(f.d_fg, t, seed=8, side_only=True)
+
+
+SCENES = [
+    (S_BRAND, S_TITLE, s_brand),
+    (S_TITLE, S_ROAD, s_title),
+    (S_ROAD, S_TOWN, s_road),
+    (S_TOWN, S_CROWD, s_town),
+    (S_CROWD, S_MASK, s_crowd),
+    (S_MASK, S_HOUSE, s_mask),
+    (S_HOUSE, S_THREAD, s_house),
+    (S_THREAD, S_LIGHT, s_thread),
+    (S_LIGHT, S_BHEED, s_light),
+    (S_BHEED, S_PARCH, s_bheed),
+    (S_PARCH, S_DHAAGE, s_parchhai),
+    (S_DHAAGE, S_PAANI, s_dhaage),
+    (S_PAANI, S_SACH, s_paani),
+    (S_SACH, S_OUTRO, s_sach),
+    (S_OUTRO, S_FIN + 1.0, s_outro),
+]
+
+
+DISSOLVE = 0.40
+
+
+def render(t):
+    """Compose one frame.
+
+    Scenes cross-dissolve into each other rather than swapping their whole
+    set on a downbeat, which is what made the earlier cut read as a slideshow.
+    """
+    idx = len(SCENES) - 1
+    for i, (t0, t1, fn) in enumerate(SCENES):
+        if t0 <= t < t1:
+            idx = i
+            break
+    t0, _, fn = SCENES[idx]
+
+    if idx > 0 and (t - t0) < DISSOLVE:
+        a = smootherstep((t - t0) / DISSOLVE)
+        prev = SCENES[idx - 1][2]
+        A = _compose(t, prev).astype(np.float32)
+        B = _compose(t, fn).astype(np.float32)
+        return np.clip(A + (B - A) * a, 0, 255).astype(np.uint8)
+
+    return _compose(t, fn)

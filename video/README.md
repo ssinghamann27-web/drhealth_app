@@ -1,17 +1,19 @@
-# Delusion Is Death — intro rebuild
+# Delusion Is Death — full rebuild
 
-Regenerates the first 52.5 seconds of the video and splices it onto the
-existing cut. Everything from the first verse onward is untouched, and the
-audio track is copied, never re-encoded.
+Regenerates the whole film. The first 52.5s is drawn outright; from there on
+new backgrounds are drawn and **the original's text layer is keyed off its own
+frames and composited over them**, so the lyrics, their karaoke highlights, the
+chapter plates and the credits survive exactly as cut. The audio is copied,
+never re-encoded.
 
 ## Build
 
 ```bash
 cd video
-./build.sh /path/to/Aman_Delusion_Is_Death_v8.mp4 Aman_Delusion_Is_Death_v9.mp4
+./build.sh /path/to/Aman_Delusion_Is_Death_v8.mp4 out.mp4
 ```
 
-Takes about 8 minutes on 4 cores.
+Takes about 45 minutes on 4 cores.
 
 To look at one beat while tuning:
 
@@ -80,6 +82,27 @@ Four roles with real contrast between them:
 | Chapter | Gloock | `SHAYARI` — high-contrast editorial serif |
 | Verse | Instrument Serif Italic | the recited shayari, a different voice from the rap captions |
 | Label | Jura | tracked micro-labels, eyebrows, credits |
+
+## The story
+
+The chapter names are the original's, and the visuals follow them:
+
+| Chapter | Time | What happens |
+|---------|------|--------------|
+| **ADHYAY 1 · MULAQAAT** | 0:12 | the meeting — a dead road, a town that goes dark, a crowd, a mask that cracks, a door that shuts, strings that snap, a light he walks into |
+| **ADHYAY 2 · BHEED** | 0:54 | the crowd — he is swallowed by the mass, ranks of them to the lens, eyes opening in waves |
+| **ADHYAY 3 · PARCHHAI** | 1:06 | the shadow — his own shadow stands up behind him and stops copying him |
+| **ADHYAY 4 · TOOT-TE DHAAGE** | 1:18 | breaking threads — the whole set hangs on strings and drops out of frame, piece by piece |
+| **ADHYAY 5 · GEHRA PAANI** | 1:30 | deep water — the grade goes cold, bodies sink past him, shafts come down from above |
+| **ADHYAY 6 · AKELA SACH** | 1:42 | the lonely truth — everything strips away to one figure under one light, and one last eye |
+| outro | 1:54 | back to the first image, emptied; he walks out and does not come back |
+
+## How the original typography survives
+
+`overlay.py` keys the text off the source frames: bright-and-near-neutral or
+hot-red pixels, gated by local edge energy, because glyphs have hard edges and
+light cones do not. Full-frame flashes pass through whole. Nothing is
+re-typeset, so the timing cannot drift.
 
 ## The one thing still missing
 

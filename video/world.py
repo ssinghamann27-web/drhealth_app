@@ -60,15 +60,16 @@ def _lradial(cx, cy, rx, ry):
 def background(t, glow_y=0.62, glow_x=0.5, intensity=1.0, pulse=0.0, cool=0.0):
     """Deep red field with a breathing core. Returns float32 HxWx3 in 0..255."""
     breathe = 1.0 + 0.07 * math.sin(t * 1.9) + pulse
-    r = _lradial(glow_x, glow_y, 0.58 + 0.03 * math.sin(t * 0.5), 0.48)
-    core = np.clip(1.0 - r, 0.0, 1.0) ** 2.1
+    r = _lradial(glow_x, glow_y, 0.98 + 0.04 * math.sin(t * 0.5), 0.86)
+    core = np.clip(1.0 - r, 0.0, 1.0) ** 1.45
 
     drift = 0.72 + 0.56 * np.roll(_LCLOUD, int((t * 2.25) % LW), axis=1)
 
-    amp = 126.0 * intensity * breathe
+    amp = 128.0 * intensity * breathe
     base = core * drift * amp
     horizon = np.clip((_lny - 0.74) / 0.26, 0, 1) ** 1.5
 
+    base = base + 5.5 * intensity
     red = base + horizon * 26.0 * intensity
     grn = base * 0.17 + horizon * 2.4 * intensity
     blu = base * 0.19 + horizon * 3.0 * intensity
@@ -96,8 +97,8 @@ def _vignette_mask(strength):
     key = round(strength, 3)
     if key not in _vig_cache:
         r = _lradial(0.5, 0.52, 0.80, 0.78)
-        v = np.clip(1.0 - (r ** 2.4) * 0.74 * strength, 0.0, 1.0)
-        _vig_cache[key] = _upscale(v)[:, :, None] * (0.18 + 0.82 * _TOPFALL)
+        v = np.clip(1.0 - (r ** 2.2) * 0.60 * strength, 0.0, 1.0)
+        _vig_cache[key] = _upscale(v)[:, :, None] * (0.24 + 0.76 * _TOPFALL)
     return _vig_cache[key]
 
 
@@ -185,3 +186,69 @@ class Embers:
             r = self.rad[i]
             d.ellipse([x - r, y - r, x + r, y + r], fill=(240, 96, 62, a))
         return lay.filter(ImageFilter.GaussianBlur(1.6))
+
+
+class Bokeh:
+    """Out-of-focus motes drifting across the field.
+
+    The original frame is full of these; without them the background is a flat
+    gradient and the title has nothing to sit on.
+    """
+
+    def __init__(self, n=46, seed=11):
+        r = np.random.default_rng(seed)
+        self.x = r.random(n) * W
+        self.y = r.random(n) * H
+        self.rad = 9 + r.random(n) ** 2 * 62
+        self.a = 0.08 + r.random(n) * 0.26
+        self.sx = (r.random(n) - 0.5) * 9
+        self.sy = -(2 + r.random(n) * 9)
+        self.ph = r.random(n) * 6.283
+
+    def draw(self, t, strength=1.0):
+        if strength <= 0.01:
+            return None
+        lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(lay)
+        for i in range(len(self.x)):
+            x = (self.x[i] + t * self.sx[i]) % (W + 240) - 120
+            y = (self.y[i] + t * self.sy[i]) % (H + 240) - 120
+            br = 0.55 + 0.45 * math.sin(t * 0.5 + self.ph[i])
+            a = int(self.a[i] * br * 190 * strength)
+            if a <= 2:
+                continue
+            rr = self.rad[i]
+            d.ellipse([x - rr, y - rr, x + rr, y + rr], fill=(188, 44, 40, a))
+        return lay.filter(ImageFilter.GaussianBlur(13.0))
+
+
+class Wisps:
+    """Faint smoke tendrils curling through the field."""
+
+    def __init__(self, n=9, seed=23):
+        r = np.random.default_rng(seed)
+        self.seed = r.random(n) * 6.283
+        self.y = r.random(n) * H
+        self.amp = 40 + r.random(n) * 150
+        self.spd = 7 + r.random(n) * 22
+        self.a = 0.18 + r.random(n) * 0.4
+
+    def draw(self, t, strength=1.0):
+        if strength <= 0.01:
+            return None
+        lay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        d = ImageDraw.Draw(lay)
+        for i in range(len(self.y)):
+            pts = []
+            off = (t * self.spd[i]) % (W + 400) - 200
+            for k in range(26):
+                u = k / 25.0
+                x = off + u * 560 - 120
+                y = (self.y[i] + math.sin(u * 4.4 + self.seed[i] + t * 0.3)
+                     * self.amp[i] * 0.5)
+                pts.append((x, y))
+            a = int(self.a[i] * 110 * strength)
+            if a <= 2:
+                continue
+            d.line(pts, fill=(170, 40, 38, a), width=3, joint="curve")
+        return lay.filter(ImageFilter.GaussianBlur(7.0))
