@@ -30,12 +30,15 @@ def text_matte(a):
 
     # The gate is only a region selector, so it is built at half resolution:
     # PIL's MaxFilter is O(k^2) per pixel and ruinous at full size.
-    hw, hh = W // 2, H // 2
+    # dimensions come from the source frame, not the render size: in reel mode
+    # the render is vertical while the frame being keyed is still 16:9
+    sh, sw = mx.shape
+    hw, hh = sw // 2, sh // 2
     lum = Image.fromarray(mx.astype(np.uint8)).resize((hw, hh), Image.BILINEAR)
     edge = lum.filter(ImageFilter.FIND_EDGES).filter(ImageFilter.MaxFilter(7))
     # dilate once more at half scale to close glyph interiors, still cheaply
     edge = edge.filter(ImageFilter.MaxFilter(3))
-    gate = np.asarray(edge.resize((W, H), Image.BILINEAR), dtype=np.float32)
+    gate = np.asarray(edge.resize((sw, sh), Image.BILINEAR), dtype=np.float32)
     gate = np.clip((gate - 18.0) / 40.0, 0, 1)
 
     return np.clip(key * gate * 1.6, 0, 1) * key
@@ -56,3 +59,57 @@ def composite(bg, src):
     if f > 0.004:
         out = out * (1.0 - f) + src * f
     return out
+
+
+# --- vertical (reel) placement -------------------------------------------
+SRC_W, SRC_H = 1920, 1080
+BAR_TOP = 1070          # the original's progress bar starts here
+BAR_COLOUR = (196, 30, 38)
+
+
+def composite_vertical(bg, src, y_offset=430):
+    """Lay the original's text layer into a natively vertical frame.
+
+    The text is keyed at source resolution, then the whole layer - lyrics,
+    highlights, chapter plate, section labels, credits - is scaled to the
+    reel's full width as one piece. Scaling to width rather than cropping is
+    what keeps every line complete: the furniture runs from x 85 to x 1916 of
+    1920, so there is no crop that keeps it.
+
+    bg: H x W x 3 float32 (the vertical render)
+    src: 1080 x 1920 x 3 float32 (the original frame)
+    """
+    h, w = bg.shape[:2]
+    m = text_matte(src)
+
+    # The original carries a progress bar on its last rows. Keyed as-is it
+    # lands as a red line across the middle of a vertical frame, so it is cut
+    # from the text layer and redrawn where it belongs - the bottom edge.
+    bar_rows = src[BAR_TOP:, :, 0].mean(axis=0)
+    m[BAR_TOP:] = 0.0
+
+    scale = w / float(SRC_W)
+    tw, th = w, max(1, int(round(SRC_H * scale)))
+
+    lay = Image.fromarray(np.clip(src, 0, 255).astype(np.uint8)).resize(
+        (tw, th), Image.LANCZOS)
+    alpha = Image.fromarray((np.clip(m, 0, 1) * 255).astype(np.uint8)).resize(
+        (tw, th), Image.LANCZOS)
+
+    y0 = int(np.clip(y_offset, 0, max(0, h - th)))
+    y1 = y0 + th
+
+    a = (np.asarray(alpha, dtype=np.float32) / 255.0)[:, :, None]
+    t = np.asarray(lay, dtype=np.float32)
+    bg[y0:y1] = bg[y0:y1] * (1.0 - a) + t * a
+
+    lit = np.nonzero(bar_rows > 40)[0]
+    if len(lit) > 4:
+        bx = int(round(lit[-1] * scale))
+        bh = max(3, int(round(h * 0.0028)))
+        bg[h - bh:, :bx] = np.asarray(BAR_COLOUR, dtype=np.float32)
+
+    f = flash_amount(src)
+    if f > 0.004:
+        bg = bg * (1.0 - f) + float(src.mean()) * f
+    return bg

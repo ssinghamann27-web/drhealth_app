@@ -30,6 +30,10 @@ def _init(cache):
     _CACHE = cache
 
 
+REEL = bool(os.environ.get("REEL"))
+FINISH = bool(os.environ.get("FINISH"))
+
+
 def _render_one(n):
     import numpy as np
     import scenes
@@ -40,8 +44,11 @@ def _render_one(n):
         p = os.path.join(_CACHE, "%05d.jpg" % (n - HANDOFF_FRAME + 1))
         if os.path.exists(p):
             src = np.asarray(Image.open(p).convert("RGB"), dtype=np.float32)
-            img = np.clip(overlay.composite(img.astype(np.float32), src),
-                          0, 255).astype(np.uint8)
+            fn = overlay.composite_vertical if REEL else overlay.composite
+            img = np.clip(fn(img.astype(np.float32), src), 0, 255).astype(np.uint8)
+    if FINISH:
+        import finish
+        img = finish.finish(img, n / FPS)
     return n, img.tobytes()
 
 
@@ -83,9 +90,10 @@ def main():
     print("rendering %d frames (%.2fs -> %.2fs) on %d workers"
           % (len(frames), f0 / FPS, f1 / FPS, a.jobs), flush=True)
 
+    import style
     ff = subprocess.Popen(
         ["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
-         "-s", "1920x1080", "-r", str(FPS), "-i", "-",
+         "-s", "%dx%d" % (style.W, style.H), "-r", str(FPS), "-i", "-",
          "-an", "-c:v", "libx264", "-preset", "medium", "-tune", "grain",
          "-crf", str(a.crf), "-pix_fmt", "yuv420p", a.out],
         stdin=subprocess.PIPE)

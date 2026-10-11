@@ -10,7 +10,14 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-W, H = 1920, 1080
+# Frame size is settable so the film can be rendered natively vertical for a
+# reel instead of being cropped or padded out of the 16:9 master.
+#   REEL=1  ->  1080x1920
+W, H = (1080, 1920) if os.environ.get("REEL") else (1920, 1080)
+VERTICAL = H > W
+# Props are sized in pixels against a 1920-wide frame; S rescales them so a
+# figure keeps its presence at any frame size.
+S = (H / 1080.0) if VERTICAL else (W / 1920.0)
 FPS = 30
 SS = 2  # supersample factor for vector layers
 
@@ -35,6 +42,16 @@ RED = (196, 30, 38)
 RED_HOT = (236, 64, 54)
 GLOW = (120, 20, 20)
 INK = (6, 3, 4)
+
+# Type is specified against a 1920-wide frame. In a narrower frame every size
+# has to come down with it or the title simply runs off the edge.
+TSCALE = W / 1920.0
+
+
+def fsize(n):
+    """A point size scaled to the current frame width."""
+    return max(8, int(round(n * TSCALE)))
+
 
 _font_cache = {}
 

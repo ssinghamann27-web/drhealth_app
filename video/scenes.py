@@ -19,7 +19,7 @@ import props
 import world
 from style import (BONE, DISPLAY, DISPLAY_LIGHT, EDITORIAL, H, LABEL,
                    LABEL_MED, MONO, RED, RED_HOT, VERSE, VERSE_UP, W, clamp,
-                   ease_in, ease_out, ease_out_back, font, lerp, ramp,
+                   ease_in, ease_out, ease_out_back, font, fsize, lerp, ramp,
                    smootherstep, smoothstep, text_size, tracked, window)
 
 BAR = 2.9814
@@ -127,6 +127,7 @@ def rule(d, cx, y, w, col, a, h=2):
 
 
 def eyebrow(d, cx, y, text, a, col=(214, 206, 204), size=19, trk=12, flank=0):
+    size = fsize(size)
     """A tracked micro-label, optionally flanked by hairlines."""
     if a <= 0.01 or not text:
         return 0
@@ -160,7 +161,7 @@ def chapter_plate(f, t):
     a = window(t, S_ROAD + 2.9, S_ROAD + 3.8, S_END + 1, S_END + 2)
     if a <= 0.01:
         return
-    fnt = font(LABEL, 19)
+    fnt = font(LABEL, fsize(19))
     label = TEXT["chapter"]
     w, _ = text_size(fnt, label, 6)
     dx = (1 - a) * 26
@@ -186,7 +187,8 @@ def chapter_card(f, t):
             col=RED_HOT, size=18, trk=15, flank=46)
 
     name = TEXT.get("chapter_name", "")
-    w = display_line(f.d_txt, cx, cy, name, 104, a, trk=10, fnt_path=EDITORIAL)
+    w = display_line(f.d_txt, cx, cy, name, fsize(104), a, trk=10,
+                     fnt_path=EDITORIAL)
 
     sw = smootherstep(ramp(t, t0 + 0.5, t0 + 1.4))
     rule(f.d_txt, cx, cy + 128, (w + 150) * sw, (190, 176, 172), a * 0.55, 1)
@@ -201,8 +203,8 @@ def shayari_credit(f, t):
     a = window(t, 16.4, 17.5, 22.2, 23.6)
     if a <= 0.01:
         return
-    f_s = font(LABEL, 14)
-    f_b = font(EDITORIAL, 26)
+    f_s = font(LABEL, fsize(14))
+    f_b = font(EDITORIAL, fsize(26))
     tracked(f.d_txt, (76, H - 126), TEXT.get("credit_label", "WORDS BY"), f_s,
             (RED_HOT[0], RED_HOT[1], RED_HOT[2], int(216 * a)), 7)
     f.d_txt.text((76, H - 104), TEXT["shayari_credit"], font=f_b,
@@ -227,7 +229,7 @@ def shayari_lines(f, t):
         a = window(t, t0, t0 + 0.6, t1 - 0.55, t1)
         if a <= 0.01:
             continue
-        fnt = font(VERSE, 62)
+        fnt = font(VERSE, fsize(62))
         hot = set(w.upper() for w in slot.get("accent", []))
         y = H * 0.50 - len(lines) * 44
         rise = (1 - smootherstep(ramp(t, t0, t0 + 0.6))) * 20
@@ -281,7 +283,7 @@ def s_brand(f, t):
         return
     k = ramp(t, b(0), b(0) + 0.55)
     sc = lerp(1.09, 1.0, ease_out_back(k, 0.9)) * lerp(1.0, 1.035, ramp(t, b(1), b(2)))
-    size = max(10, int(146 * sc))
+    size = max(10, fsize(146 * sc))
     cx = W / 2
     y = H * 0.40 - size * 0.5
 
@@ -358,7 +360,7 @@ def s_title(f, t):
     if a > 0.01:
         ks = ramp(t, S_TITLE, S_TITLE + 0.5)
         sc = lerp(1.11, 1.0, ease_out(ks, 3.2))
-        size = max(10, int(152 * sc))
+        size = max(10, fsize(152 * sc))
         cx = W / 2
         y = H * 0.395 - size * 0.5 - 46 * ease_in(ramp(t, b(3) + 1.0, S_ROAD), 2.2)
 
@@ -1038,7 +1040,9 @@ def s_parchhai(f, t):
     free = smootherstep(ramp(t, b(24), b(25)))
     wx = W * (0.40 + 0.10 * math.sin(t * 0.45))
     sx = lerp(wx, W * (0.62 + 0.16 * math.sin(t * 0.3 + 1.7)), free)
-    sh_h = lerp(260, H * 0.92, k)
+    # size it so the head always lands inside the frame, whatever the aspect
+    sh_max = min(H * 0.92, (GY + 120 - H * 0.10) / 0.87)
+    sh_h = lerp(260, sh_max, k)
     head = props.looming_shadow(f.d_sil, sx, GY + 120, sh_h, t,
                                 head_turn=free * 0.9, lean=free * 0.6)
     if head and free > 0.05:

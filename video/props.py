@@ -10,9 +10,10 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
-from style import H, W, clamp, lerp, smoothstep
+from style import H, S, VERTICAL, W, clamp, lerp, smoothstep
 
-GROUND = int(H * 0.815)
+# A vertical frame wants the horizon higher, with sky above and ground below.
+GROUND = int(H * (0.615 if VERTICAL else 0.815))
 
 
 def new_mask():
