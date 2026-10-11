@@ -33,4 +33,8 @@ build/
 dist/
 
 # rendered video output (build artifacts of video/build.sh)
-Aman_Delusion_Is_Death*.mp4
+
+# rendered video output at the repo root (build artifacts, reproducible
+# from video/build.sh) - keep them out of git, they run to hundreds of MB
+/*.mp4
+/*.mov
