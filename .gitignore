@@ -31,4 +31,6 @@ lib/ai_model/loki_data/
 .idea/
 build/
 dist/
-Aman_Delusion_Is_Death_v*.mp4
+
+# rendered video output (build artifacts of video/build.sh)
+Aman_Delusion_Is_Death*.mp4
